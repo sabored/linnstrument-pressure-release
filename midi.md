@@ -292,7 +292,7 @@ The following table lists all the NRPN input values that LinnStrument understand
 | 228   | 0-26  | Global Switch 1 Assignment  (0: Oct Down, 1: Oct Up, 2: Sustain, 3: CC65, 4: Arp, 5: Alt Split, 6: Auto Octave, 7: Tap Tempo...)
 | 229   | 0-26  | Global Switch 2 Assignment  (...8: Legato, 9: Latch, 10/11: Program Change Up/Down, 12: Reverse Pitch X, 13: Sequencer Play...)
 | 230   | 0-26  | Global Foot Left Assignment (...14: Sequencer Previous, 15: Sequencer Next, 16: Send MIDI Clock, 17: Sequencer Mute...)
-| 231   | 0-26  | Global Foot Right Assignment (...18-19: Transpose Up/Down, 20-21: 8ve Up/Down, 22-24: Previous Preset/Memory/Scale, 25-26: EDO Up/Down)
+| 231   | 0-26  | Global Foot Right Assignment (...18-19: Transpose Down/Up, 20-21: 8ve Up/Down, 22-24: Previous Preset/Memory/Scale, 25-26: EDO Up/Down)
 | 232   | 0-3   | Global Velocity Sensitivity (0: Low, 1: Medium, 2: High, 3: Fixed)
 | 233   | 0-2   | Global Pressure Sensitivity (0: Low, 1: Medium, 2: High)
 | 234   | 0-1   | Device MIDI I/O (0: MIDI Jacks, 1: USB)

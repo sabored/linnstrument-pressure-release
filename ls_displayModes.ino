@@ -1382,11 +1382,11 @@ void paintCustomSwitchAssignmentConfigDisplay() {
     case ASSIGNED_SEQUENCER_MUTE:
       adaptfont_draw_string(0, 0, "MUTE", globalColor, true);
       break;
-    case ASSIGNED_TRANSPOSE_UP:
-      adaptfont_draw_string(0, 0, "TRN+", globalColor, true);
-      break;
     case ASSIGNED_TRANSPOSE_DOWN:
       adaptfont_draw_string(0, 0, "TRN-", globalColor, true);
+      break;
+    case ASSIGNED_TRANSPOSE_UP:
+      adaptfont_draw_string(0, 0, "TRN+", globalColor, true);
       break;
     case ASSIGNED_MICROLINN_8VE_UP:
       adaptfont_draw_string(0, 0, "8VE", globalColor, true);
@@ -1773,8 +1773,8 @@ void paintSwitchAssignment(byte mode) {
     case ASSIGNED_SEQUENCER_NEXT:
     case ASSIGNED_STANDALONE_MIDI_CLOCK:
     case ASSIGNED_SEQUENCER_MUTE:
-    case ASSIGNED_TRANSPOSE_UP:
     case ASSIGNED_TRANSPOSE_DOWN:
+    case ASSIGNED_TRANSPOSE_UP:
     case ASSIGNED_MICROLINN_8VE_UP:
     case ASSIGNED_MICROLINN_8VE_DOWN:
     case ASSIGNED_MICROLINN_PREV_PRESET:

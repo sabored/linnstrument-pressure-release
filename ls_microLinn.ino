@@ -19,7 +19,7 @@ But a function that has "microLinn" not at the beginning is called elsewhere, e.
 The microLinn software version number is the usual 6-digit version number plus our 3-digit number
 This is the number that the Global Settings OS VERS button shows, e.g. 234.072.001
 The microLinn data structure version number is Device.version (16 as of late 2025) plus an offset of 56, making 72,
-plus Device.microLinn.MLversion = 1, making 72.1
+plus Device.microLinn.MLversion = 2 (MICROLINN_MLVERSION), making 72.2
 This is the number ls_extstorage.ino uses to migrate user settings from one OS version to the next
 
 MicroLinn includes KVR forum member teknico's channel pressure fix, many thanks to him! Search for "teknico" to see his code
@@ -1443,6 +1443,7 @@ boolean microLinnCanBacktrack = false;                          // true if newly
 
 // importing vars
 byte microLinnImportType = 0;                                   // 0 means no import is currently happening
+byte microLinnImportMLversion = MICROLINN_MLVERSION;            // MLversion from the import's header, 72.1 data needs its switches renumbered
 long microLinnImportSize = 0;                                   // size = the # of data bytes, 2 data bytes per 3-byte polypressure msg
 long microLinnImportCounter = 0;
 boolean microLinnImportXen = true;                              // don't import xen data for most presets if rawEDO == 4
@@ -2306,7 +2307,7 @@ void initializeMicroLinn() {
   // DO NOT initialize Device.microLinn.uninstall here, because the updater app seems to re-initialize it before using it
   microLinnImportingOn = false;
   microLinnLastClipLaunched = 0;
-  Device.microLinn.MLversion = 1;     // the 1 in 72.1
+  Device.microLinn.MLversion = MICROLINN_MLVERSION;
   memcpy (&Device.microLinn.scales,   &MICROLINN_SCALES,   MICROLINN_ARRAY_SIZE);
   memcpy (&Device.microLinn.rainbows, &MICROLINN_RAINBOWS, MICROLINN_ARRAY_SIZE);
   for (byte EDO = 5; EDO <= MICROLINN_MAX_EDO; ++EDO) microLinnResetFretboard(EDO);
@@ -5209,6 +5210,15 @@ void importMicroLinnData(int value) {
   microLinnImportCounter = 0;
 }
 
+boolean microLinnIsCurrentLayout(byte version, byte MLversion) {
+  // 72.1 and 72.2 have the same layout, 72.2 only renumbered the Transpose switches (see microLinnImportedSwitch)
+  return version == Device.version && (MLversion == Device.microLinn.MLversion || MLversion == 1);
+}
+
+unsigned short microLinnImportedSwitch(unsigned short assignment) {
+  return microLinnImportMLversion == 1 ? switchAssignmentFromMicroLinnV72_1(assignment) : assignment;
+}
+
 void microLinnDeduceImportSize(byte version, byte MLversion) {
   // deduce the size from import type and version numbers
   byte* arrayPtr;
@@ -5239,15 +5249,15 @@ void microLinnDeduceImportSize(byte version, byte MLversion) {
       microLinnImportSize = 3 * MICROLINN_ARRAY_SIZE;
       break;
     case 13:  // settings for the current split
-      if (version == Device.version && MLversion == Device.microLinn.MLversion)
+      if (microLinnIsCurrentLayout(version, MLversion))
         microLinnImportSize = sizeof(SplitSettings);
       break;
     case 14:  // Global settings and both Split settings
-      if (version == Device.version && MLversion == Device.microLinn.MLversion)
+      if (microLinnIsCurrentLayout(version, MLversion))
         microLinnImportSize = sizeof(PresetSettings);
       break;
     case 15:  // all 6 presets/memories
-      if (version == Device.version && MLversion == Device.microLinn.MLversion)
+      if (microLinnIsCurrentLayout(version, MLversion))
         microLinnImportSize = NUMPRESETS * sizeof(PresetSettings);
       break;
     case 16:  // all user settings
@@ -5282,13 +5292,14 @@ void receiveMicroLinnPolyPressure(byte data1, byte data2, byte channel) {
     if (data1 > Device.version || data2 > Device.microLinn.MLversion) {         // cancel imports from future versions
       microLinnImportType = 0;
       microLinnScrollSmall("IMPORT FAILURE UNKNOWN DATA VERSION " + String(data1) + " " + String(data2));
-    } else if (microLinnImportType == 15 && (data1 != Device.version || data2 != Device.microLinn.MLversion)) {
+    } else if (microLinnImportType == 15 && !microLinnIsCurrentLayout(data1, data2)) {
       microLinnImportType = 0;
       microLinnScrollSmall("IMPORT FAILURE DATA VERSION MISMATCH " + String(data1) + " " + String(data2));
     } else {
+      microLinnImportMLversion = data2;
       microLinnDeduceImportSize(data1, data2);
-      // eventually save data1 and data2 as global vars microLinnImportVersion and microLinnImportMLVersion
-      // and use them to import data exported from an older version, much like the updater app does
+      // eventually save data1 as a global var microLinnImportVersion and use it with microLinnImportMLversion
+      // to import data exported from an older layout, much like the updater app does
     }
     return;
   }
@@ -5504,12 +5515,12 @@ void receiveMicroLinnPolyPressure(byte data1, byte data2, byte channel) {
       }
       break;
 
-    case 13:   // import 1 split = 113 bytes for version 72.1
+    case 13:   // import 1 split = 113 bytes for version 72.1 and 72.2
       if (i == 0) microLinnImportXen = true;
       microLinnImportSplit(data1, data2, i, 0, Global.currentPerSplit);
       break;
 
-    case 14:   // import Global and both Split settings = 596 bytes for version 72.1
+    case 14:   // import Global and both Split settings = 596 bytes for version 72.1 and 72.2
       if (i == 0) microLinnImportXen = true;
       if (i < sizeof(GlobalSettings)) {
         microLinnImportGlobal(data1, data2, i, 0);
@@ -5518,7 +5529,7 @@ void receiveMicroLinnPolyPressure(byte data1, byte data2, byte channel) {
       }
       break;
 
-    case 15:   // import all 6 presets = 3576 bytes for version 72.1
+    case 15:   // import all 6 presets = 3576 bytes for version 72.1 and 72.2
       m = i % sizeof(PresetSettings);                            // m = index into the Nth preset
       n = (i - m) / sizeof(PresetSettings);                      // n = which preset
       if (m == 0) microLinnImportXen = true;                     // reset the flag for each new preset
@@ -5603,7 +5614,7 @@ boolean microLinnInRange (short data, short lo, short hi) {
 }
 
 void microLinnImportDevice(byte data1, byte data2, unsigned short i) {               // don't import calibration data
-  if (i >= 5736) return;                                                             // version 72.1 size is 5736 bytes without calibration
+  if (i >= 5736) return;                                                             // version 72.1 and 72.2 size is 5736 bytes without calibration
   unsigned short number = data1 | (data2 << 8);                                      // LSB first (little-endian)
 
   if (i == 0) {
@@ -5679,7 +5690,7 @@ void microLinnImportDevice(byte data1, byte data2, unsigned short i) {          
   }
 }
 
-void microLinnImportGlobal(byte data1, byte data2, unsigned short i, byte presetNum) {     // version 72.1 size is 307 + 1 byte padding
+void microLinnImportGlobal(byte data1, byte data2, unsigned short i, byte presetNum) {     // version 72.1 and 72.2 size is 307 + 1 byte padding
   if (i < 0 || i >= sizeof(GlobalSettings)) return;
   GlobalSettings *g = (presetNum == 0 ? &Global : &config.preset[presetNum - 1].global);
   if (i >= 170 && !microLinnImportXen) return;
@@ -5723,14 +5734,14 @@ void microLinnImportGlobal(byte data1, byte data2, unsigned short i, byte preset
     if (microLinnInRange(data1,  0, 2))   g->pressureSensitivity = (PressureSensitivity)data1;
     if (microLinnInRange(data2,  0, 1))   g->pressureAftertouch = (data2 == 1);
   } else if (i == 120) {
-    if (microLinnInRange(data1, ASSIGNED_OCTAVE_DOWN, MAX_ASSIGNED)) g->switchAssignment[0] = data1;
-    if (microLinnInRange(data2, ASSIGNED_OCTAVE_DOWN, MAX_ASSIGNED)) g->switchAssignment[1] = data2;
+    if (microLinnInRange(data1, ASSIGNED_OCTAVE_DOWN, MAX_ASSIGNED)) g->switchAssignment[0] = microLinnImportedSwitch(data1);
+    if (microLinnInRange(data2, ASSIGNED_OCTAVE_DOWN, MAX_ASSIGNED)) g->switchAssignment[1] = microLinnImportedSwitch(data2);
   } else if (i == 122) {
-    if (microLinnInRange(data1, ASSIGNED_OCTAVE_DOWN, MAX_ASSIGNED)) g->switchAssignment[2] = data1;
-    if (microLinnInRange(data2, ASSIGNED_OCTAVE_DOWN, MAX_ASSIGNED)) g->switchAssignment[3] = data2;
+    if (microLinnInRange(data1, ASSIGNED_OCTAVE_DOWN, MAX_ASSIGNED)) g->switchAssignment[2] = microLinnImportedSwitch(data1);
+    if (microLinnInRange(data2, ASSIGNED_OCTAVE_DOWN, MAX_ASSIGNED)) g->switchAssignment[3] = microLinnImportedSwitch(data2);
   } else if (i == 124) {
     if (inRange(data1, ASSIGNED_OCTAVE_DOWN, MAX_ASSIGNED) || data1 == ASSIGNED_DISABLED) {
-      g->switchAssignment[4] = data1;
+      g->switchAssignment[4] = microLinnImportedSwitch(data1);
     } else microLinnCancelImport();
     if (microLinnInRange(data2,  0, 1))   g->switchBothSplits[0] = (data2 == 1);
   } else if (i == 126) {
@@ -5744,7 +5755,7 @@ void microLinnImportGlobal(byte data1, byte data2, unsigned short i, byte preset
   } else if (i <= 148) {
     if (microLinnInRange(number, 0, 127)) g->ccForSwitchSustain[(i-140)/2] = number;
   } else if (i <= 158) {
-    if (microLinnInRange(number, ASSIGNED_TAP_TEMPO, MAX_ASSIGNED)) g->customSwitchAssignment[(i-150)/2] = number;
+    if (microLinnInRange(number, ASSIGNED_TAP_TEMPO, MAX_ASSIGNED)) g->customSwitchAssignment[(i-150)/2] = microLinnImportedSwitch(number);
   } else if (i == 160) {
     if (microLinnInRange(data1,  0, 1)) g->midiIO = data1;
     if (microLinnInRange(data2,  0, 4)) g->arpDirection = (ArpeggiatorDirection)data2;
@@ -5815,7 +5826,7 @@ void microLinnImportSplits(byte data1, byte data2, unsigned short i,  byte prese
   microLinnImportSplit(data1, data2, i, presetNum, side);
 }
 
-void microLinnImportSplit(byte data1, byte data2, unsigned short i,  byte presetNum, byte side) {       // version 72.1 size is 113 bytes per side
+void microLinnImportSplit(byte data1, byte data2, unsigned short i,  byte presetNum, byte side) {       // version 72.1 and 72.2 size is 113 bytes per side
   if (i < 0 || i >= sizeof(SplitSettings)) return;
   SplitSettings *spl = (presetNum == 0 ? &Split[side] : &config.preset[presetNum - 1].split[side]);
   if (i >= 102 && !microLinnImportXen) return;

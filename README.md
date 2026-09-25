@@ -78,7 +78,7 @@ Additions to other menus:
 * Octave/Transpose display: when microtonal, additional option for transposing by major 2nds
 * Global display:
 * * row offset buttons turn pink if overridden by a per-split row offset, red if not coprime with a column offset
-* * long-press Tap Tempo and swipe for new options TRNS+, TRNS-, 8VE±, 8VE∓, PRE, MEM, EDO+ and EDO-
+* * long-press Tap Tempo and swipe for new options TRNS-, TRNS+, 8VE±, 8VE∓, PRE, MEM, EDO+ and EDO-
 * * double-tap Low Power for dim-but-fast mode (bright blue)
 * * double-tap Update OS to uninstall microLinn (red), use with caution!
 * * yellow button(s) for the microLinn menu
@@ -335,7 +335,7 @@ You can back up various settings and/or share them with others via midi files. T
   * *(4) For security, unplugging the LinnStrument turns Allow Importing off, so you must turn it on each time you import.*
   * *(5) When importing, first exit all web browsers in case a webmidi page sends rouge NRPN or polypressure messages.*
   * *(6) When importing, slowing down your DAW's playback speed sometimes helps. Likewise, when exporting, speeding up your DAW's recording speed can help.*
-  * *(7) The AllUserSettings export is meant for migrating from an old LinnStrument to a new one. It can import from a Linn128 to a Linn200 and vice versa. But it will only import if the OS version on the old LinnStrument matches the OS version on the new one. (Or more precisely, if the data structure versions match. The current version is 72.1.)*
+  * *(7) The AllUserSettings export is meant for migrating from an old LinnStrument to a new one. It can import from a Linn128 to a Linn200 and vice versa. But it will only import if the OS version on the old LinnStrument matches the OS version on the new one. (Or more precisely, if the data structure versions match. The current version is 72.2, which can also import from 72.1.)*
   * *(8) If you get "IMPORT FAILURE" followed by 2 numbers, the 2nd number says which midi message in the import file caused the failure. For example, 7 means the 7th midi message.*
   * *(9) MicroLinn imports data via polyphonic pressure messages. If you have connected something else to your LinnStrument that also sends polypressure messages, there is a small possibility of confusion. If after importing there is no sucess or failure scrolling message, to avoid confusion either set Allow Importing to OFF, or just unplug the LinnStrument.*
 

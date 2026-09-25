@@ -1,5 +1,6 @@
 // This file preserves the older versions of the microLinn data structures, for version migration by ls_extstorage.ino
-// When microLinn 72.2 comes out, add MicroLinnV72_1 to this file in its own namespace
+// 72.2 has the same layout as 72.1 (it only renumbered the Transpose switches), so there is no MicroLinnV72_1 namespace
+// When the microLinn layout next changes, add the old structs to this file in their own namespace
 // When a new official version comes out, say V17, 
 //    Merge the official changes into the microLinn version (this will include V16 code)
 //    Change all the Vlatest structs from the V16 version to the V17 version

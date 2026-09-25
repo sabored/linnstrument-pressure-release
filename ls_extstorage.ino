@@ -1100,10 +1100,17 @@ boolean upgradeConfigurationSettings(int32_t confSize, byte* buff2) {
             }
           } else if (microLinnVersion == 1) {
             updaterImpliedSettingsSize = sizeof(Configuration);
+            if (confSize == sizeof(Configuration)) {                      // 72.1 has the same layout as 72.2
+              copyConfigurationMicroLinnV72_1(&config, buff2);
+              setupMicroLinn();
+              result = true;
+            } else {
+              result = false;
+            }
+          } else if (microLinnVersion == 2) {
+            updaterImpliedSettingsSize = sizeof(Configuration);
             if (confSize == sizeof(Configuration)) {
               memcpy(&config, buff2, confSize);
-              // when version 72.2 is released, replace the previous memcpy with the following line
-              // copyConfigurationFunction = &copyConfigurationMicroLinnV72_1;
               setupMicroLinn();
               result = true;
             } else {
@@ -2336,7 +2343,7 @@ void initMicroLinnData() {
     }
   }
 
-  config.device.microLinn.MLversion = 1;                               // the 1 in 72.1
+  config.device.microLinn.MLversion = MICROLINN_MLVERSION;
   config.device.microLinn.uninstall = false;
 }
 
@@ -2425,13 +2432,13 @@ void migrateFromMicroLinnSplitV72_0 (MicroLinnSplit* t, void* source) {
   t->transposeEDOsteps = s->transposeEDOsteps;
 }
 
-void copyConfigurationMicroLinnV72_0(void* target, void* source) {   // copies from 72.0 to 72.1
+void copyConfigurationMicroLinnV72_0(void* target, void* source) {   // copies from 72.0 to the current 72.x layout
   Configuration* t = (Configuration*)target;
   MicroLinnV72_0::Configuration* s = (typeof(s)) source;             // "::" refers to the namespace in ls_extstorageMicroLinn.ino
 
   memcpy(&t->device, &s->device, sizeof(s->device));                 // Device.microLinn gets copied automatically
   t->device.version = 16 + MICROLINN_VERSION_OFFSET;                 // redundant, delete?
-  t->device.microLinn.MLversion = 1;
+  t->device.microLinn.MLversion = MICROLINN_MLVERSION;
   t->device.microLinn.uninstall = false;
 
   memcpy(&t->settings.global, &s->settings.global, sizeof(GlobalSettings) - sizeof(MicroLinnGlobal));
@@ -2450,6 +2457,32 @@ void copyConfigurationMicroLinnV72_0(void* target, void* source) {   // copies f
     }
   }
   memcpy(&t->project, &s->project, sizeof(s->project));
+}
+
+// 72.2 has the same layout as 72.1, but ASSIGNED_TRANSPOSE_UP and ASSIGNED_TRANSPOSE_DOWN were swapped to match the official firmware
+unsigned short switchAssignmentFromMicroLinnV72_1(unsigned short assignment) {    // also used for bulk imports from 72.1
+  if (assignment == 18) return ASSIGNED_TRANSPOSE_UP;                            // 18 was TRANSPOSE_UP in 72.1
+  if (assignment == 19) return ASSIGNED_TRANSPOSE_DOWN;                          // 19 was TRANSPOSE_DOWN in 72.1
+  return assignment;
+}
+
+void migrateSwitchesFromMicroLinnV72_1(GlobalSettings* g) {
+  for (byte i = 0; i < 5; i++) {
+    g->switchAssignment[i] = switchAssignmentFromMicroLinnV72_1(g->switchAssignment[i]);
+    g->customSwitchAssignment[i] = switchAssignmentFromMicroLinnV72_1(g->customSwitchAssignment[i]);
+  }
+}
+
+void copyConfigurationMicroLinnV72_1(void* target, void* source) {   // copies from 72.1 to 72.2
+  Configuration* t = (Configuration*)target;
+
+  memcpy(t, source, sizeof(Configuration));
+  t->device.microLinn.MLversion = MICROLINN_MLVERSION;
+
+  migrateSwitchesFromMicroLinnV72_1(&t->settings.global);
+  for (byte p = 0; p < NUMPRESETS; p++) {
+    migrateSwitchesFromMicroLinnV72_1(&t->preset[p].global);
+  }
 }
 
 /* Roll back settings to latest non-MicroLinn format, so user can uninstall microLinn */

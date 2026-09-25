@@ -201,8 +201,8 @@ byte NUMROWS = 8;                    // number of touch sensor rows
 #define ASSIGNED_SEQUENCER_NEXT         15
 #define ASSIGNED_STANDALONE_MIDI_CLOCK  16
 #define ASSIGNED_SEQUENCER_MUTE         17
-#define ASSIGNED_TRANSPOSE_UP           18
-#define ASSIGNED_TRANSPOSE_DOWN         19
+#define ASSIGNED_TRANSPOSE_DOWN         18         // same numbers as the official firmware, microLinn 72.1 had them swapped
+#define ASSIGNED_TRANSPOSE_UP           19
 #define ASSIGNED_MICROLINN_8VE_UP       20
 #define ASSIGNED_MICROLINN_8VE_DOWN     21
 #define ASSIGNED_MICROLINN_PREV_PRESET  22         // Preset means program change 0-127, not memory 0-5
@@ -265,6 +265,7 @@ const unsigned long LED_ARRAY_SIZE = (MAX_LED_LAYERS+1) * LED_LAYER_SIZE;
 // (we would rather have used 128, but the updater interprets version as a signed character type,
 // and rejects negative version numbers.)
 #define MICROLINN_VERSION_OFFSET 56
+#define MICROLINN_MLVERSION 2                     // Device.microLinn.MLversion, the 2 in 72.2
 
 /*************************************** CONVENIENCE MACROS **************************************/
 
@@ -758,7 +759,7 @@ const byte MICROLINN_MAX_EDO = 55;                // the minimum edo is 5
 const short MICROLINN_ARRAY_SIZE = (MICROLINN_MAX_EDO * (MICROLINN_MAX_EDO + 1)) / 2 - 10;     // a triangular array missing rows 1-4 = 1530
 
 struct MicroLinnDevice {
-  byte MLversion;                                 // current version of the microLinn data structures, currently 1
+  byte MLversion;                                 // current version of the microLinn data structures, currently MICROLINN_MLVERSION
   boolean uninstall;                              // used by ls_serial.ino, should be a runtime var but updating seems to re-initializes runtime vars
   byte scales[MICROLINN_ARRAY_SIZE];              // each byte is a bitmask for one note of the 7 scales (8th bit is zero)
   byte rainbows[MICROLINN_ARRAY_SIZE];            // choose among the 10 colors
