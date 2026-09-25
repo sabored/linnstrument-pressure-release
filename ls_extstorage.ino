@@ -1260,6 +1260,7 @@ void copySplitSettingsV1(void* target, void* source) {
   t->colorLowRow = s->colorLowRow;
   t->playedTouchMode = playedSame;
   t->lowRowMode = s->lowRowMode;
+  t->lowRowBendBehavior = lowRowBendBend;
   t->lowRowCCXBehavior = lowRowCCHold;
   t->lowRowCCXYZBehavior = lowRowCCHold;
   t->transposeOctave = s->transposeOctave;
@@ -1342,6 +1343,7 @@ void copySplitSettingsV2(void* target, void* source) {
   t->colorLowRow = s->colorLowRow;
   t->playedTouchMode = playedSame;
   t->lowRowMode = s->lowRowMode;
+  t->lowRowBendBehavior = lowRowBendBend;
   t->lowRowCCXBehavior = lowRowCCHold;
   t->lowRowCCXYZBehavior = lowRowCCHold;
   t->transposeOctave = s->transposeOctave;
@@ -1566,6 +1568,7 @@ void copySplitSettingsV3(void* target, void* source) {
   t->colorLowRow = s->colorLowRow;
   t->playedTouchMode = playedSame;
   t->lowRowMode = s->lowRowMode;
+  t->lowRowBendBehavior = lowRowBendBend;
   t->lowRowCCXBehavior = s->lowRowCCXBehavior;
   t->ccForLowRow = s->ccForLowRow;
   t->lowRowCCXYZBehavior = s->lowRowCCXYZBehavior;
@@ -1663,6 +1666,7 @@ void copySplitSettingsV4(void* target, void* source) {
   t->colorLowRow = s->colorLowRow;
   t->playedTouchMode = playedSame;
   t->lowRowMode = s->lowRowMode;
+  t->lowRowBendBehavior = lowRowBendBend;
   t->lowRowCCXBehavior = s->lowRowCCXBehavior;
   t->ccForLowRow = s->ccForLowRow;
   t->lowRowCCXYZBehavior = s->lowRowCCXYZBehavior;
@@ -1906,6 +1910,7 @@ void copySplitSettingsV5(void* target, void* source) {
   t->colorSequencerDisabled = s->colorSequencerDisabled;
   t->playedTouchMode = playedSame;
   t->lowRowMode = s->lowRowMode;
+  t->lowRowBendBehavior = lowRowBendBend;
   t->lowRowCCXBehavior = s->lowRowCCXBehavior;
   t->ccForLowRow = s->ccForLowRow;
   t->lowRowCCXYZBehavior = s->lowRowCCXYZBehavior;
@@ -2218,6 +2223,7 @@ void copySplitSettingsV6(void* target, void* source) {
   t->colorSequencerDisabled = s->colorSequencerDisabled;
   t->playedTouchMode = s->playedTouchMode;
   t->lowRowMode = s->lowRowMode;
+  t->lowRowBendBehavior = lowRowBendBend;
   t->lowRowCCXBehavior = s->lowRowCCXBehavior;
   t->ccForLowRow = s->ccForLowRow;
   t->lowRowCCXYZBehavior = s->lowRowCCXYZBehavior;

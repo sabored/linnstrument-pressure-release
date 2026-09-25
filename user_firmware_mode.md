@@ -129,6 +129,7 @@ CC 22       Change the color of the cell with the provided column and row coordi
             see color value table in midi.txt, 7+: default color
 ```
 
+
 Examples
 ========
 
