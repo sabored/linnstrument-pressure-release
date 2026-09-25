@@ -380,6 +380,33 @@ void handleMidiInput(unsigned long nowMicros) {
 
       case MIDIControlChange:
       {
+        // RPN/NRPN parameter numbers are handled before the CC faders, so that faders set to CCs 98-101 don't block them
+        // RPN/NRPN handling guards against the DAW resetting CC values to zero and accidentally creating RPN 0 or NRPN 0
+        // CC98 must be the very next CC message after CC99, likewise for CC38 and CC6, and for CC100 and CC101
+        // RPN input and NRPN input are mutually exclusive, so 99/98 disables RPN input and 101/100 disables NRPN input
+        switch (midiData1) {
+          case 98:
+            lastNrpnLsb = midiData2;
+            isValidRpn = false;
+            isValidNrpn = lastCC == 99;
+            break;
+          case 99:
+            lastNrpnMsb = midiData2;
+            isValidRpn = false;
+            isValidNrpn = false;
+            break;
+          case 100:
+            lastRpnLsb = midiData2;
+            isValidRpn = lastCC == 101 && (lastRpnMsb != 127 || lastRpnLsb != 127);
+            isValidNrpn = false;
+            break;
+          case 101:
+            lastRpnMsb = midiData2;
+            isValidRpn = false;
+            isValidNrpn = false;
+            break;
+        }
+
         // CC6: if an NRPN or RPN parameter was selected, start constituting the data
         if (midiData1 == 6 && (isValidRpn || isValidNrpn)) {
           lastDataMsb = midiData2;
@@ -416,8 +443,9 @@ void handleMidiInput(unsigned long nowMicros) {
                  displayMode == displayVolume) {
               updateDisplay();
             }
-            // if a fader intercepts a CC, don't apply that CC to RPN/NRPN construction
-            lastCC = -1;
+            // if a fader intercepts a CC, don't apply that CC to RPN/NRPN construction,
+            // except for CCs 98-101, which were already applied above
+            lastCC = inRange(midiData1, 98, 101) ? midiData1 : -1;
             break;
           }
         }
@@ -514,29 +542,6 @@ void handleMidiInput(unsigned long nowMicros) {
             checkRefreshLedColumn(micros());
             break;
           }
-          // RPN/NRPN handling guards against the DAW resetting CC values to zero and accidentally creating RPN 0 or NRPN 0
-          // CC98 must be the very next CC message after CC99, likewise for CC38 and CC6, and for CC100 and CC101
-          // RPN input and NRPN input are mutually exclusive, so 99/98 disables RPN input and 101/100 disables NRPN input
-          case 98:
-            lastNrpnLsb = midiData2;
-            isValidRpn = false;
-            isValidNrpn = lastCC == 99;
-            break;
-          case 99:
-            lastNrpnMsb = midiData2;
-            isValidRpn = false;
-            isValidNrpn = false;
-            break;
-          case 100:
-            lastRpnLsb = midiData2;
-            isValidRpn = lastCC == 101 && (lastRpnMsb != 127 || lastRpnLsb != 127);
-            isValidNrpn = false;
-            break;
-          case 101:
-            lastRpnMsb = midiData2;
-            isValidRpn = false;
-            isValidNrpn = false;
-            break;
         }
         lastCC = midiData1;
         break;

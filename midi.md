@@ -64,7 +64,7 @@ MIDI Control Change input
 
 If the CC faders are assigned to any other CC numbers than the default 1-8 CC numbers, those will be
 used for control change input of the faders. If the CC numbers conflict with internal LinnStrument
-features, than the CC faders will take precedence. Exception: CC6 or CC38 when part of an RPN or NRPN.
+features, than the CC faders will take precedence. Exceptions: CC98-101, and CC6 or CC38 when part of an RPN or NRPN.
 
 | CC Number     | Used for
 | --------------|--------------------------------------------------------------------------------------------------
@@ -110,7 +110,7 @@ This is an overview of the NRPN message chain:
 CC98 must be the very next CC message after CC99, likewise for CC38 and CC6, and for CC100 and CC101.
 Between the 99/98 pair and the 101/100 pair, multiple 6/38 pairs are allowed.
 
-Beware, setting a split's CC Fader to any CC from 98 to 101 will block RPNs and NRPNs sent on that split's channels.
+CC98-101 always select the RPN or NRPN parameter number, even when a split's CC Fader is set to one of them (that fader follows them too).
 
 
 The following table lists all the RPN input values that LinnStrument understands.
