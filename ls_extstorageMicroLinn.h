@@ -1,10 +1,10 @@
 // This file preserves the older versions of the microLinn data structures, for version migration by ls_extstorage.ino
 // 72.2 has the same layout as 72.1 (it only renumbered the Transpose switches), so there is no MicroLinnV72_1 namespace
 // When the microLinn layout next changes, add the old structs to this file in their own namespace
-// When a new official version comes out, say V17, 
-//    Merge the official changes into the microLinn version (this will include V16 code)
-//    Change all the Vlatest structs from the V16 version to the V17 version
-//    Update the ls_extstorage.ino file
+// When a new official version comes out, e.g. V17 in 2.3.4,
+//    Merge the official changes into the microLinn version
+//    Keep the VLatest structs on V16, which the microLinn layout is based on and which uninstalling restores
+//    Add the new official structs to ls_extstorage.ino with a field-by-field converter, see copyConfigurationV17()
 
 // settingsVersion = the old version, read from the 1st byte of the data structures
 // Device.Version = new version, explicitly set in ls_settings.ino, e.g. official fork has "Device.version = 16;"

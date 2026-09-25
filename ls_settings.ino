@@ -379,7 +379,7 @@ void storeSettingsToPreset(byte p) {
 // The first time after new code is loaded into the Linnstrument, this sets the initial defaults of all settings.
 // On subsequent startups, these values are overwritten by loading the settings stored in flash.
 void initializeDeviceSettings() {
-  // when a new mainstream version is released, update 16 to 17 to reflect Geert's Feb 2026 changes
+  // microLinn stays on the V16 layout, official V17 settings (v2.3.4) are converted by copyConfigurationV17()
   Device.version = 16 + MICROLINN_VERSION_OFFSET;          // 16 is the latest non-MicroLinn version (created in 2023)
   Device.serialMode = false;
   Device.sleepAnimationActive = false;
