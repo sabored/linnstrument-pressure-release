@@ -828,15 +828,6 @@ struct ConfigurationV14 {
   PresetSettingsV10 preset[4];
   SequencerProject project;
 };
-/**************************************** Configuration V15 ****************************************
-This is used by firmware v2.2.0, v2.2.1, v2.2.2
-**************************************************************************************************/
-struct ConfigurationV15 {
-  DeviceSettingsV12 device;
-  PresetSettings settings;
-  PresetSettings preset[6];
-  SequencerProject project;
-};
 
 /**************************************** Configuration V16 ****************************************
 This is used by latest pre-MicroLinn firmware, V16. It's called VLatest to avoid conflict with the future official V16
@@ -961,6 +952,17 @@ struct PresetSettingsVLatest {
 
 struct ConfigurationVLatest {
   DeviceSettingsVLatest device;
+  PresetSettingsVLatest settings;
+  PresetSettingsVLatest preset[6];
+  SequencerProject project;
+};
+
+/**************************************** Configuration V15 ****************************************
+This is used by firmware v2.2.0, v2.2.1, v2.2.2
+Its presets have the same layout as V16's, so it's declared after the V16 structs and uses them
+**************************************************************************************************/
+struct ConfigurationV15 {
+  DeviceSettingsV12 device;
   PresetSettingsVLatest settings;
   PresetSettingsVLatest preset[6];
   SequencerProject project;
@@ -2293,12 +2295,14 @@ void copyConfigurationV15(void* target, void* source) {
 
   copyDeviceSettingsV12(&t->device, &s->device);
 
-  memcpy(&t->settings, &s->settings, sizeof(PresetSettings));
+  copyPresetSettingsVLatest(&t->settings, &s->settings);
   for (byte p = 0; p < 6; ++p) {
-    memcpy(&t->preset[p], &s->preset[p], sizeof(PresetSettings));
+    copyPresetSettingsVLatest(&t->preset[p], &s->preset[p]);
   }
 
   memcpy(&t->project, &s->project, sizeof(SequencerProject));
+
+  initMicroLinnData();
 }
 
 /*************************************************************************************************/
@@ -2336,6 +2340,21 @@ void initMicroLinnData() {
   config.device.microLinn.uninstall = false;
 }
 
+void copyPresetSettingsVLatest(void* target, void* source) {           // copies V15 or V16 presets to microLinn
+  PresetSettings* t = (PresetSettings*)target;
+  PresetSettingsVLatest* s = (PresetSettingsVLatest*)source;
+
+  memcpy(&t->global, &s->global, sizeof(s->global));
+  if (t->global.customRowOffset == -17) t->global.customRowOffset = -5;         // the "-GUI" option
+
+  for (int split = 0; split < NUMSPLITS; split++) {
+    memcpy(&t->split[split], &s->split[split], sizeof(s->split[split]));
+    if (t->split[split].playedTouchMode > playedSame) {
+        t->split[split].playedTouchMode += 1;                                 // make room for the BLNK option
+    }
+  }
+}
+
 void copyConfigurationVLatest(void* target, void* source) {            // copies from V16 to microLinn 72.1
   Configuration* t = (Configuration*)target;
   ConfigurationVLatest* s = (ConfigurationVLatest*) source;
@@ -2343,8 +2362,7 @@ void copyConfigurationVLatest(void* target, void* source) {            // copies
   memcpy(&t->device, &s->device, sizeof(s->device));
   t->device.version = 16 + MICROLINN_VERSION_OFFSET;
 
-  memcpy(&t->settings.global, &s->settings.global, sizeof(s->settings.global));
-  if (t->settings.global.customRowOffset == -17) t->settings.global.customRowOffset = -5;   // the "-GUI" option
+  copyPresetSettingsVLatest(&t->settings, &s->settings);
 
   // condense both arrays of ints down to shorts
   //short* array = (short *) &Global.mainNotes;                   // configure both old arrays as a simple array of bytes
@@ -2356,22 +2374,8 @@ void copyConfigurationVLatest(void* target, void* source) {            // copies
   //}
   //memset (array[18], 0, 60);
 
-  for (int split = 0; split < NUMSPLITS; split++) {
-    memcpy(&t->settings.split[split], &s->settings.split[split], sizeof(s->settings.split[split]));
-    if (t->settings.split[split].playedTouchMode > playedSame) {
-        t->settings.split[split].playedTouchMode += 1;                // make room for the BLNK option
-    }
-  }
-
   for (byte p = 0; p < 6; p++) {
-    memcpy(&t->preset[p].global, &s->preset[p].global, sizeof(s->preset[p].global));
-    if (t->preset[p].global.customRowOffset == -17) t->preset[p].global.customRowOffset = -5;
-    for (int split = 0; split < NUMSPLITS; split++) {
-      memcpy(&t->preset[p].split[split], &s->preset[p].split[split], sizeof(s->preset[p].split[split]));
-      if (t->preset[p].split[split].playedTouchMode > playedSame) {
-          t->preset[p].split[split].playedTouchMode += 1;
-      }
-    }
+    copyPresetSettingsVLatest(&t->preset[p], &s->preset[p]);
   }
   memcpy(&t->project, &s->project, sizeof(s->project));
 
