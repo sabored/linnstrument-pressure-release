@@ -2656,6 +2656,31 @@ void copyConfigurationMicroLinnV72_1(void* target, void* source) {   // copies f
   }
 }
 
+void restoreNonMicroLinnGlobal(void* target) {                          // V16 has no microLinn values, see below
+  GlobalSettingsVLatest* g = (GlobalSettingsVLatest*)target;
+
+  g->customRowOffset = constrain(g->customRowOffset, -16, 16);
+  for (byte i = 0; i < 5; i++) {
+    // V16 only has switch values up to ASSIGNED_SEQUENCER_MUTE, so no TRN-, TRN+, 8VE±, 8VE∓, PRE, MEM, SCL, EDO+ or EDO-
+    if (g->customSwitchAssignment[i] > ASSIGNED_SEQUENCER_MUTE) {
+      g->customSwitchAssignment[i] = ASSIGNED_TAP_TEMPO;
+    }
+    if (g->switchAssignment[i] > ASSIGNED_SEQUENCER_MUTE && g->switchAssignment[i] != ASSIGNED_DISABLED) {
+      if (i == SWITCH_FOOT_B) g->switchAssignment[i] = ASSIGNED_DISABLED;             // disable virtual 3rd footswitch
+      else g->switchAssignment[i] = g->customSwitchAssignment[i];                     // keep the custom option selected
+    }
+  }
+}
+
+void restoreNonMicroLinnSplit(void* target) {
+  SplitSettingsVLatest* t = (SplitSettingsVLatest*)target;
+
+  t->ccForLowRow &= 0xFF;                                                            // the high byte is microLinn's lowRowBendBehavior
+  if (t->playedTouchMode > playedSame) {
+      t->playedTouchMode -= 1;                                                       // no BLNK option, so merge it with SAME
+  }
+}
+
 /* Roll back settings to latest non-MicroLinn format, so user can uninstall microLinn */
 void restoreNonMicroLinnConfiguration(void* target, void* source) {
   ConfigurationVLatest* t = (ConfigurationVLatest*)target;
@@ -2666,35 +2691,18 @@ void restoreNonMicroLinnConfiguration(void* target, void* source) {
   t->device.operatingLowPower = false;                                               // avoid 2 = dimmed display
 
   memcpy(&t->settings.global, &s->settings.global, sizeof(t->settings.global));
-  t->settings.global.customRowOffset = constrain(t->settings.global.customRowOffset, -16, 16);
-  for (byte i = 0; i < 5; i++) {
-    if (t->settings.global.customSwitchAssignment[i] > MAX_ASSIGNED - 4) {           // no 8VE_UP, 8VE_DOWN, EDO_UP or EDO_DOWN
-        t->settings.global.customSwitchAssignment[i] = ASSIGNED_TAP_TEMPO;
-        if (i == 4) t->settings.global.switchAssignment[i] = ASSIGNED_DISABLED;      // disable virtual 3rd footswitch
-    }
-  }
-
+  restoreNonMicroLinnGlobal(&t->settings.global);
   for (byte split = 0; split < NUMSPLITS; split++) {
     memcpy(&t->settings.split[split], &s->settings.split[split], sizeof(t->settings.split[split]));
-    if (t->settings.split[split].playedTouchMode > playedSame) {
-        t->settings.split[split].playedTouchMode -= 1;                               // no BLNK option, so merge it with SAME
-    }
+    restoreNonMicroLinnSplit(&t->settings.split[split]);
   }
 
   for (byte p = 0; p < 6; p++) {
     memcpy(&t->preset[p].global, &s->preset[p].global, sizeof(t->preset[p].global));
-    t->preset[p].global.customRowOffset = constrain(t->preset[p].global.customRowOffset, -16, 16);
-    for (byte i = 0; i < 5; i++) {
-      if (t->preset[p].global.customSwitchAssignment[i] > MAX_ASSIGNED - 4) {
-          t->preset[p].global.customSwitchAssignment[i] = ASSIGNED_TAP_TEMPO;
-          if (i == 4) t->preset[p].global.switchAssignment[i] = ASSIGNED_DISABLED;
-      }
-    }
+    restoreNonMicroLinnGlobal(&t->preset[p].global);
     for (byte split = 0; split < NUMSPLITS; split++) {
       memcpy(&t->preset[p].split[split], &s->preset[p].split[split], sizeof(t->preset[p].split[split]));
-      if (t->preset[p].split[split].playedTouchMode > playedSame) {
-          t->preset[p].split[split].playedTouchMode -= 1;
-      }
+      restoreNonMicroLinnSplit(&t->preset[p].split[split]);
     }
   }
 
