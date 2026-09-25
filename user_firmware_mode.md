@@ -127,7 +127,7 @@ CC 13       Configure User Firmware MIDI decimation rate in milliseconds (minimu
 CC 20       Column coordinate for cell color change with CC 22 (starts from 0)
 CC 21       Row coordinate for cell color change with CC 22 (starts from 0)
 CC 22       Change the color of the cell with the provided column and row coordinates
-            see color value table in midi.txt, 7+: default color
+            see color value table in midi.md, 7+: default color
 ```
 
 

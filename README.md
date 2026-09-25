@@ -10,7 +10,7 @@ For experienced linnstrumentalists, microLinn makes exploring microtonality very
 #  INSTALLATION  
 
 
-1) Go to https://www.rogerlinndesign.com/support/support-linnstrument-update-software and follow the "How to Check Your Software Version" instructions. If it's not 2.3.3, follow the "How to Update Your LinnStrument Software‍" instructions to update to 2.3.3. Linux users: use a friend's mac or Windows machine to update. Version 2.3.4 is still in beta and is not yet supported.
+1) Go to https://www.rogerlinndesign.com/support/support-linnstrument-update-software and follow the "How to Check Your Software Version" instructions. If it's not 2.3.3 or 2.3.4, follow the "How to Update Your LinnStrument Software‍" instructions to update to 2.3.4. Linux users: use a friend's mac or Windows machine to update.
 2) Download linnstrument-firmware-microLinn-234.072.001.ino.bin.zip from the LinnWIki (the LinnStrument Community wiki) and unzip it. Important: if on a mac, put the .bin file on your **desktop**. 
 3) Follow the "How to Update Your LinnStrument Software‍" instructions, with one difference: after you download and unzip the updater and before running it, put it in the same folder as the .bin file from step 2. Mac users: when you run the updater, if it asks for permission to read files from the desktop, say yes.
 If you accidentally long-press the Update OS button, you'll enter user firmware mode and the display will go blank. To return to normal, just unplug your LinnStrument.

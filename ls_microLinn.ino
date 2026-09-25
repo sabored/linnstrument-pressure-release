@@ -39,7 +39,7 @@ Misc small bug fixes, not in the readme file, line numbers are for the official 
                     line 900      "if (inRange(value, 0, 14)) {"             14 -> 15
   ls_settings.ino   line 722      "midiPreset[0] = 0;"                       [0] -> [s]
                     line 2154     "handleNumericDataReleaseCol(true);"       true -> false   (microLinn issue #5)
-  midi.txt          line 127      NRPN 61, limits should be 0-15, also in the list playedCell is missing
+  midi.md           line 134      NRPN 61, limits should be 0-15, also in the list playedCell is missing
   various files, search for "avoid transposeLights working backwards when lefty"
   various files, search for "doublePerSplit", it now only applies to the octave/transpose display
 
