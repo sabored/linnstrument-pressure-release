@@ -62,7 +62,8 @@ note on message, the Polyphonic Pressure notes 0 to 25, correspond to the column
 
 X data is sent over channels 1 to 8, mapped to rows 1 to 8 on the LinnStrument. MIDI CC messages 0 to 25 correspond to
 the columns and contain the 14 bit MSB part. MIDI CC messages 32 to 57 can be used as the LSB counterparts of messages 0
-to 25 to receive more precise X data. The 14-bit range from the left edge to the right edge is 0 to 4265.
+to 25 to receive more precise X data. The 14-bit range from the left edge to the right edge is 0 to 4265 for a
+LinnStrument 200, or 0 to 2730 for a LinnStrument 128. The ordering of the messages is first LSB and then MSB.
 
 Y data is sent over channels 1 to 8, corresponding to the rows. The columns correspond to MIDI CC messages 64 to 89. The
 values range from 0 to 127, from the bottom edge to the top edge of a cell. X-axis Slide Mode
@@ -139,8 +140,8 @@ In practice a single cell press could result in messages like this in non-slide 
 Ch3 Note On 12 Velocity 120
 
 Ch3 PolyPressure Key 12 Value Z
-Ch3 CC 12 Value X MSB
 Ch3 CC 44 Value X LSB
+Ch3 CC 12 Value X MSB
 Ch3 CC 76 Value Y
 
 Ch3 Note Off 12 Velocity 0
@@ -152,15 +153,15 @@ In practice a cell transition could result in messages like this in slide mode:
 Ch3 Note On 12 Velocity 120
 
 Ch3 PolyPressure Key 12 Value Z
-Ch3 CC 12 Value X MSB
 Ch3 CC 44 Value X LSB
+Ch3 CC 12 Value X MSB
 Ch3 CC 76 Value Y
 Ch3 CC 119 Value 12
 Ch3 Note On 13 Velocity 120
 Ch3 Note Off 12 Velocity 13
 Ch3 PolyPressure Key 13 Value Z
-Ch3 CC 13 Value X MSB
 Ch3 CC 45 Value X LSB
+Ch3 CC 13 Value X MSB
 Ch3 CC 77 Value Y
 
 Ch3 Note Off 13 Velocity 0
