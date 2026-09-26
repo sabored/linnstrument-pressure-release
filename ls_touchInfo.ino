@@ -190,6 +190,7 @@ void initializeTouchInfo() {
       cell(col, row).clearPhantoms();
     }
   }
+  clearAllMicroLinnSoundingNotes();
 
   // Initialize the touch bitmasks
   for (byte col = 0; col < NUMCOLS; ++col) {
@@ -608,6 +609,7 @@ boolean TouchInfo::hasUsableX() {
 void TouchInfo::clearMusicalData() {
   note = -1;
   channel = -1;
+  clearMicroLinnSoundingNote(*this);
   octaveOffset = 0;
   fxdPrevPressure = 0;
   fxdPrevTimbre = FXD_CONST_255;

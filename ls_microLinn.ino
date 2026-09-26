@@ -1391,6 +1391,14 @@ short microLinnEdostep[NUMSPLITS][MAXCOLS][MAXROWS];                // each cell
 signed char microLinnMidiNote[NUMSPLITS][MICROLINN_MAX_EDOSTEPS];   // the midi note number for each untransposed virtual edostep, -1 = unused
 short microLinnTuningBend[NUMSPLITS][MICROLINN_MAX_EDOSTEPS];       // the deviation from 12edo as a pitch bend number from -8192 to 8191
 
+struct MicroLinnSoundingNote {                                  // see setMicroLinnSoundingNote()
+  byte cellPlusOne;                                             // index into touchInfo plus 1, 0 = unused
+  signed char midiNote;                                         // the midi note sent at note-on
+  short tuningBend;                                             // the tuning bend sent with it
+};
+const byte MICROLINN_MAX_SOUNDING_NOTES = 24;                   // more notes than this use the tuning tables
+MicroLinnSoundingNote microLinnSoundingNotes[MICROLINN_MAX_SOUNDING_NOTES];
+
 byte edo;                                                       // these 2 are the only microLinn vars that don't have "microLinn" in the name
 float edostepSize;                                              // edo's step size in 12edo semitones
 
@@ -1849,6 +1857,67 @@ short getMicroLinnTuningBend(byte side, short edostep) {
   return microLinnTuningBend[side][edostep];
 }
 
+// The tuning tables include the transposition, and transposing recalculates them while notes may be sounding.
+// So like the official firmware, whose touches store the transposed note, microLinn remembers the midi note and
+// tuning bend each touch sent at note-on, and uses them until the touch is released. Until then, and if more than
+// MICROLINN_MAX_SOUNDING_NOTES are sounding, they come from the tables. RAM is scarce, so rather than adding them
+// to every cell's TouchInfo, they're kept in the short microLinnSoundingNotes list.
+byte microLinnCellPlusOne(TouchInfo& cell) {
+  return &cell - &touchInfo[0][0] + 1;
+}
+
+signed char microLinnFindSoundingNote(byte cellPlusOne) {                // returns -1 if not found
+  for (byte i = 0; i < MICROLINN_MAX_SOUNDING_NOTES; ++i) {
+    if (microLinnSoundingNotes[i].cellPlusOne == cellPlusOne) return i;
+  }
+  return -1;
+}
+
+// called by sendNewNote() in ls_handleTouches.ino and sendMicroLinnPullOff()
+void setMicroLinnSoundingNote(TouchInfo& cell, signed char midiNote, short tuningBend) {
+  signed char i = microLinnFindSoundingNote(microLinnCellPlusOne(cell));
+  for (byte j = 0; i == -1 && j < MICROLINN_MAX_SOUNDING_NOTES; ++j) {
+    byte c = microLinnSoundingNotes[j].cellPlusOne;
+    if (c == 0 || (&touchInfo[0][0])[c - 1].note == -1) i = j;           // unused, or its touch has ended
+  }
+  if (i == -1) return;                                                    // full, this note uses the tuning tables
+  microLinnSoundingNotes[i].cellPlusOne = microLinnCellPlusOne(cell);
+  microLinnSoundingNotes[i].midiNote = midiNote;
+  microLinnSoundingNotes[i].tuningBend = tuningBend;
+}
+
+// called by prepareNewNote() in ls_handleTouches.ino and TouchInfo::clearMusicalData() in ls_touchInfo.ino
+void clearMicroLinnSoundingNote(TouchInfo& cell) {
+  signed char i = microLinnFindSoundingNote(microLinnCellPlusOne(cell));
+  if (i != -1) microLinnSoundingNotes[i].cellPlusOne = 0;
+}
+
+// called by initializeTouchInfo() in ls_touchInfo.ino
+void clearAllMicroLinnSoundingNotes() {
+  memset(microLinnSoundingNotes, 0, sizeof(microLinnSoundingNotes));
+}
+
+// called by transferFromSameRowCell() and transferToSameRowCell() in ls_handleTouches.ino, when a touch slides to another cell
+void moveMicroLinnSoundingNote(TouchInfo& from, TouchInfo& to) {
+  clearMicroLinnSoundingNote(to);
+  signed char i = microLinnFindSoundingNote(microLinnCellPlusOne(from));
+  if (i != -1) microLinnSoundingNotes[i].cellPlusOne = microLinnCellPlusOne(to);
+}
+
+// called by handleXYZupdate(), sendReleasedNote() and handleTouchRelease() in ls_handleTouches.ino
+signed char getMicroLinnCellMidiNote(byte side, TouchInfo& cell) {
+  signed char i = microLinnFindSoundingNote(microLinnCellPlusOne(cell));
+  if (i != -1) return microLinnSoundingNotes[i].midiNote;
+  return getMicroLinnMidiNote(side, cell.note, cell.microLinnGroup);
+}
+
+// called by handleXYZupdate() and handleTouchRelease() in ls_handleTouches.ino
+short getMicroLinnCellTuningBend(byte side, TouchInfo& cell) {
+  signed char i = microLinnFindSoundingNote(microLinnCellPlusOne(cell));
+  if (i != -1) return microLinnSoundingNotes[i].tuningBend;
+  return getMicroLinnTuningBend(side, cell.note, cell.microLinnGroup);
+}
+
 // called by scalePitch() in ls_midi.ino
 float getMicroLinnSemitonesPerPad(byte side, int pitchValue) {
   if (Split[side].microLinn.condensedBendPerPad != 1) return microLinnSemitonesPerPad[side];
@@ -2174,8 +2243,8 @@ signed char prepareMicroLinnHammerOn(byte side, byte row) {
       }
       resetPossibleNoteCells(side, note);
       if (isMicroLinnOn()) {
-        note = getMicroLinnMidiNote(side, note, sensorCell->microLinnGroup);         // bug delete group
-        channel = rechannelMicroLinnGroup(side, channel, sensorCell->microLinnGroup);
+        note = getMicroLinnCellMidiNote(side, touchInfo[col][row]);
+        channel = rechannelMicroLinnGroup(side, channel, sensorCell->microLinnGroup); // bug delete group
       }
       midiSendNoteOffWithVelocity(side, note, sensorCell->velocity, channel);
       //setLed(col, row, COLOR_OFF, cellOff, LED_LAYER_PLAYED);
@@ -2250,7 +2319,7 @@ void sendMicroLinnPullOff() {
   }
 
   if (isMicroLinnOn()) {
-    note = getMicroLinnMidiNote(sensorSplit, note, sensorCell->microLinnGroup);
+    note = getMicroLinnCellMidiNote(sensorSplit, *sensorCell);
     channel = rechannelMicroLinnGroup(sensorSplit, channel, sensorCell->microLinnGroup);
     if (note == -1 || channel == -1) return;
   }
@@ -2269,8 +2338,10 @@ void sendMicroLinnPullOff() {
       note = microLinnHammerOns[i].note;
       highlightPossibleNoteCells(sensorSplit, note);
       if (isMicroLinnOn()) {
+        short tuningBend = getMicroLinnTuningBend(sensorSplit, note, sensorCell->microLinnGroup);
         note = getMicroLinnMidiNote(sensorSplit, note, sensorCell->microLinnGroup);
         channel = rechannelMicroLinnGroup(sensorSplit, channel, sensorCell->microLinnGroup);
+        setMicroLinnSoundingNote(touchInfo[col][row], note, tuningBend);          // it may have been transposed while muted
       }
       midiSendNoteOn(sensorSplit, note, sensorCell->velocity, channel);
       microLinnDeleteHammeredNote(i);

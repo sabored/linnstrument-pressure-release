@@ -855,18 +855,21 @@ void receivedNrpn(int parameter, int value, int channel) {
     case 36:
       if (inRange(value, 0, 10)) {
         Split[split].transposeOctave = (value-5)*12;
+        calcMicroLinnTuning();                                    // microLinn's tuning tables include the transposition
       }
       break;
     // Split Transpose Pitch
     case 37:
       if (inRange(value, 0, 14)) {
         Split[split].transposePitch = value-7;
+        calcMicroLinnTuning();
       }
       break;
     // Split Transpose Lights
     case 38:
       if (inRange(value, 0, 14)) {
         Split[split].transposeLights = value-7;
+        calcMicroLinnTuning();
       }
       break;
     // Split MIDI Expression For Y

@@ -193,6 +193,7 @@ void handleLowRowState(boolean newVelocity, short pitchBend, short timbre, byte 
                 }
               }
               else if (Split[sensorSplit].lowRowBendBehavior == lowRowBendTranspose) {
+                signed char previousTranspose[NUMSPLITS] = {Split[LEFT].transposePitch, Split[RIGHT].transposePitch};
                 startBufferedLeds();
 
                 // if both splits are set to low row transpose, and split is active,
@@ -212,6 +213,12 @@ void handleLowRowState(boolean newVelocity, short pitchBend, short timbre, byte 
                 else {
                   Split[sensorSplit].transposePitch = sensorCol - (lowCol + (highCol - lowCol - 1) / 2);
                   paintLowRowTranspose(sensorSplit);
+                }
+
+                // microLinn's tuning tables include the transposition, only recalculate them when it changes
+                if (Split[LEFT].transposePitch != previousTranspose[LEFT] ||
+                    Split[RIGHT].transposePitch != previousTranspose[RIGHT]) {
+                  calcMicroLinnTuning();
                 }
 
                 paintOctaveTransposeLed();
