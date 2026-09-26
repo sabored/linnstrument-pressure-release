@@ -3053,6 +3053,12 @@ short microLinnTransposition(byte side) {                                  // # 
         - Split[side].transposeLights * Split[side].microLinn.colOffset * direction;    // transposeLights shifts by columns not edosteps
 }
 
+// the LEDs are refreshed one column at a time from the main loop, so keep them going during long calculations,
+// otherwise the lit column stays lit for several milliseconds and flashes
+void microLinnRefreshLeds() {
+  if (setupDone && displayMode != displaySleep) checkRefreshLedColumn(micros());
+}
+
 void calcMicroLinnTuning() { 
   // calcs microLinnSemitonesPerPad, microLinnEdostep, microLinnMidiNote and microLinnTuningBend
   // the last three are tuning tables, different from tuning table mode which refers to loading a scala tuning file into a synth
@@ -3105,6 +3111,7 @@ void calcMicroLinnTuning() {
     short transpose = microLinnTransposition(side);
     float bendRange = 8192.0F / getBendRange(side);                                 // invert to avoid dividing 400 times
     for (byte row = 0; row < NUMROWS; ++row) {
+      microLinnRefreshLeds();
       distance = microLinnSumOfRowOffsets(side, anchorRow, row);                    // distance in edosteps between any 2 rows
       distance += transpose - anchorCol * colOffset;                                // distance from the anchor cell, initialized to col 0
       note = anchorPitch + distance * edostepSize;                                  // convert distance from edosteps to a fractional 12edo midi note
@@ -3175,6 +3182,7 @@ void microLinnCalcCondensedTuning(byte side) {                                  
   microLinnSemitonesPerPad[side] = edostepSize * (Split[side].microLinn.condensedBendPerPad - 1);
 
   for (byte row = 0; row < NUMROWS; ++row) {
+    microLinnRefreshLeds();
     if (!isGuitarTuning) {
       // diatonic/condensed row offsets ensure all notes are in the scale
       // condensing row offsets before summing ensures a consistent stepspan between rows

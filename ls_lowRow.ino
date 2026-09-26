@@ -215,14 +215,14 @@ void handleLowRowState(boolean newVelocity, short pitchBend, short timbre, byte 
                   paintLowRowTranspose(sensorSplit);
                 }
 
+                paintOctaveTransposeLed();
+                finishBufferedLeds();
+
                 // microLinn's tuning tables include the transposition, only recalculate them when it changes
                 if (Split[LEFT].transposePitch != previousTranspose[LEFT] ||
                     Split[RIGHT].transposePitch != previousTranspose[RIGHT]) {
                   calcMicroLinnTuning();
                 }
-
-                paintOctaveTransposeLed();
-                finishBufferedLeds();
               }
               break;
             }
