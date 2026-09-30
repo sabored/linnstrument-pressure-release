@@ -5,3 +5,4 @@ build/*
 linnstrument-firmware.sublime-*
 stino.settings
 .DS_Store
+tools/**/__pycache__/
