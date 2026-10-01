@@ -69,7 +69,7 @@ memory errors.
 | `report [--ref REF] [--against BASE] [--ram-budget N]` | All of the above, before and after |
 | `desktop [--ref REF] [--run] [--settings EXPORT] [--calibration as-exported\|stand-in] [--seconds S] [--midi-log FILE] [--harness FILE]` | Builds the whole sketch for this computer; `--run` boots it and runs it |
 | `layout [--ref REF] [-v]` | Checks that the desktop build lays out every struct as the instrument does; fails on any difference not explained by a pointer, and on a struct missing from either build |
-| `replay [--ref REF] [--against BASE \| --baseline DIR \| --no-compare] --recordings DIR [--config NAME]... [--recording NAME]... [--repeat] [--sanitize] [--save DIR]` | Plays sensor recordings through the firmware in every test configuration, with and without their scripted events, and compares the MIDI with BASE byte for byte; fails on any difference |
+| `replay [--ref REF] [--against BASE \| --baseline DIR \| --no-compare] --recordings DIR [--config NAME]... [--recording NAME]... [--repeat] [--sanitize] [--save DIR] [--allow-contained]` | Plays sensor recordings through the firmware in every test configuration, with and without their scripted events, and compares the MIDI with BASE byte for byte; fails on any difference, and on a known memory error in the firmware replayed |
 
 Without `--ref`, a command works on the working tree, uncommitted changes included. With `--ref`, it
 works on that commit, and its results are cached in `build/fw/<commit>/`.
@@ -188,9 +188,14 @@ recording's clock:
   channel. With an EDO set, the note is microLinn's edostep, not the MIDI note.
 - `run.txt`: the run's summary: how much of the recording was served, the touch ends the model
   added and the notes they ended, the settings checked after boot, and checks on the firmware: the
-  tempo and NRPN import state after boot, how full microLinn's hammer-on list got, and the notes left
-  sounding at the end of the run (a note-on with no note-off after it on its channel, which the table
-  of `fw.py replay` also flags).
+  tempo and NRPN import state after boot, how full microLinn's hammer-on list got, and the MIDI:
+  - the notes left sounding at the end of the run (a note-on with no note-off after it on its
+    channel);
+  - the doubled note-ons (a note-on for a note already sounding on its channel);
+  - the longest note, from its first note-on to the note-off that ends it, or to the end of the run.
+    A note that hangs and is ended much later by another note's note-off shows here.
+
+  The table of `fw.py replay` flags the first two.
 - `settings.txt`, `provision.txt` and `flash.bin`: the run's settings once all were set, how they were
   provisioned, and the flash image the run booted from.
 
@@ -202,9 +207,16 @@ recording's clock:
   and all the files are identical.
 - `--sanitize` builds the firmware with AddressSanitizer and repeats every run with it: it fails on
   any memory error, and on logs that differ from the normal build's, which would mean the firmware's
-  behaviour depends on where its variables are. Memory errors already known in the firmware are
-  contained in every desktop build where their code is still there, as `fwlib/memfix.py` lists; the
-  replay says when the two builds it compares had different ones contained.
+  behaviour depends on where its variables are. Memory errors already known in old firmware, such as
+  v0.1.0, are contained in every desktop build where their code is still there, as `fwlib/memfix.py`
+  lists, so that comparisons with that firmware don't depend on where variables are placed; the replay
+  says when the two builds it compares had different ones contained.
+- **A known memory error in the firmware replayed fails the replay**, whether or not anything else
+  differs: a containment that applies to it, or microLinn's hammer-on list overflowing. The current
+  firmware has fixed them, so either means a memory bug that the containment would hide from the
+  replay and the sanitizer. `--allow-contained` replays an old firmware that still has them, for
+  example to make its baseline: `--ref v0.1.0 --allow-contained`. The firmware it's compared with
+  (BASE) may have them.
 - `--save DIR` copies the logs to DIR, gzipped, with `SHA256SUMS` of the uncompressed files;
   `--baseline DIR` then compares with them instead of building BASE.
 

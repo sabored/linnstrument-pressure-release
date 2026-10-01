@@ -23,6 +23,11 @@ list stays as it is until no build compared needs it. `fw.py replay` says when t
 compares had different containments. A change that only rewords one of these lines without fixing
 the error loses its containment; `fw.py replay --sanitize` runs the replays under AddressSanitizer,
 which reports any memory error not contained here.
+
+The containments are for old firmware, such as v0.1.0: the current firmware has fixed these errors.
+So `fw.py replay` fails when one applies to the firmware it replays, unless told that firmware is an
+old one (--allow-contained); a change that brings back one of these lines would otherwise have its
+memory error contained, and hidden from both the replay and the sanitizer.
 """
 # (short name, text in the combined sketch, desktop replacement on the same line, why, and the texts of
 # the code that makes the error, any of which must be in the sketch for the containment to apply, or

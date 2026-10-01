@@ -760,8 +760,19 @@ static void printTime(FILE* f, uint64_t ns) {
 struct MidiStats {
   uint64_t messages = 0, noteOns = 0, noteOffs = 0;
   std::map<std::string, uint64_t> byType;
-  std::map<int, uint64_t> sounding;            // channel * 128 + note: when its last note-on was written, until a note-off
+  std::map<int, uint64_t> sounding;            // channel * 128 + note: when it started sounding, until a note-off
+  std::vector<std::pair<uint64_t, int>> doubled;   // note-ons for a note already sounding on its channel: when, which
+  uint64_t longestNs = 0, longestStartNs = 0;      // the longest note, from its first note-on to the note-off ending it
+  int longestKey = -1;
 } midi;
+
+static void noteEnded(int key, uint64_t startNs, uint64_t endNs) {
+  if (endNs - startNs > midi.longestNs) {
+    midi.longestNs = endNs - startNs;
+    midi.longestStartNs = startNs;
+    midi.longestKey = key;
+  }
+}
 
 static FILE* midiLog = nullptr;
 
@@ -771,11 +782,17 @@ static void logMessage(const std::vector<uint8_t>& msg, uint64_t writtenNs, uint
   ++midi.byType[harness::midiType(status)];
   if ((status & 0xF0) == 0x90 && msg.size() == 3 && msg[2] > 0) {
     ++midi.noteOns;
-    midi.sounding[(status & 0x0F) * 128 + msg[1]] = writtenNs;
+    int key = (status & 0x0F) * 128 + msg[1];
+    if (midi.sounding.count(key)) midi.doubled.push_back(std::make_pair(writtenNs, key));
+    else midi.sounding[key] = writtenNs;
   }
   if ((status & 0xF0) == 0x80 || ((status & 0xF0) == 0x90 && msg.size() == 3 && msg[2] == 0)) {
     ++midi.noteOffs;
-    if (msg.size() > 1) midi.sounding.erase((status & 0x0F) * 128 + msg[1]);
+    auto s = msg.size() > 1 ? midi.sounding.find((status & 0x0F) * 128 + msg[1]) : midi.sounding.end();
+    if (s != midi.sounding.end()) {
+      noteEnded(s->first, s->second, writtenNs);
+      midi.sounding.erase(s);
+    }
   }
   if (!midiLog) return;
   printTime(midiLog, writtenNs);
@@ -1036,15 +1053,31 @@ int main(int argc, char** argv) {
   printf("firmware check: after boot, tempo %d BPM, microLinn's NRPN import %s%s\n", bootTempo, bootImporting ? "on" : "off",
          bootTempo != 120 || bootImporting ? " (the firmware's own defaults are 120 BPM and off: debug preferences are on)" : "");
   std::vector<std::pair<uint64_t, int>> left;
-  for (auto& s : midi.sounding) left.push_back(std::make_pair(s.second, s.first));
-  std::sort(left.begin(), left.end());
-  printf("midi check: %zu notes left sounding at the end (a note-on with no note-off after it)", left.size());
-  for (size_t i = 0; i < left.size() && i < 5; ++i) {
-    printf("%s ch%d note %d on at ", i ? "," : ":", left[i].second / 128 + 1, left[i].second % 128);
-    printTime(stdout, left[i].first);
-    printf(" us");
+  for (auto& s : midi.sounding) {
+    left.push_back(std::make_pair(s.second, s.first));
+    noteEnded(s.first, s.second, hal::nowNs());
   }
-  printf("%s\n", left.size() > 5 ? ", ..." : "");
+  std::sort(left.begin(), left.end());
+  auto printNotes = [](const std::vector<std::pair<uint64_t, int>>& notes) {
+    for (size_t i = 0; i < notes.size() && i < 5; ++i) {
+      printf("%s ch%d note %d at ", i ? "," : ":", notes[i].second / 128 + 1, notes[i].second % 128);
+      printTime(stdout, notes[i].first);
+      printf(" us");
+    }
+    printf("%s\n", notes.size() > 5 ? ", ..." : "");
+  };
+  printf("midi check: %zu notes left sounding at the end (a note-on with no note-off after it)", left.size());
+  printNotes(left);
+  printf("midi check: %zu doubled note-ons (a note-on for a note already sounding on its channel)", midi.doubled.size());
+  printNotes(midi.doubled);
+  printf("midi check: longest note %.3f s", midi.longestNs / 1e9);
+  if (midi.longestKey >= 0) {
+    printf(", ch%d note %d from ", midi.longestKey / 128 + 1, midi.longestKey % 128);
+    printTime(stdout, midi.longestStartNs);
+    printf(" us%s", midi.sounding.count(midi.longestKey) && midi.sounding[midi.longestKey] == midi.longestStartNs ?
+           " (still sounding at the end)" : "");
+  }
+  printf("\n");
   printf("midi: %llu messages, %llu note-ons, %llu note-offs", (unsigned long long)midi.messages,
          (unsigned long long)midi.noteOns, (unsigned long long)midi.noteOffs);
   for (auto& t : midi.byType) printf(", %s %llu", t.first.c_str(), (unsigned long long)t.second);

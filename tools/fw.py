@@ -13,6 +13,7 @@
   python3 tools/fw.py layout   [--ref REF]        struct layouts: desktop build vs instrument build
   python3 tools/fw.py replay   [--ref REF] [--against BASE | --baseline DIR | --no-compare] --recordings DIR
                                [--config NAME]... [--recording NAME]... [--repeat] [--sanitize] [--save DIR]
+                               [--allow-contained]
                                                   replay sensor recordings through the firmware, compare MIDI
 
 Without --ref, commands work on the working tree, uncommitted changes included. BASE defaults to
@@ -393,6 +394,11 @@ def cmd_replay(args):
     log('replayed: %s' % target.describe())
     contained = replay.contained(target)
     log('memory errors contained (fwlib/memfix.py): %s' % (', '.join(contained) or 'none'))
+    if contained and not args.allow_contained:
+        log('MEMORY ERROR: the build under test has the code of known memory errors, which the desktop build '
+            'contains: %s. The firmware has fixed them, so this is a memory bug that the replay and the sanitizer '
+            'would not otherwise see. (--allow-contained replays an old firmware that has them, such as v0.1.0.)'
+            % ', '.join(contained))
     if compared and not args.baseline and replay.contained(base) != contained:
         log('NOTE: %s had different ones contained: %s; a difference in runs that reach them can come from that'
             % (base.describe(), ', '.join(replay.contained(base)) or 'none'))
@@ -400,11 +406,13 @@ def cmd_replay(args):
         log('compared with: %s (midi.txt, byte for byte)' % compared)
     log('')
     log('%-18s %-14s %6s %9s %8s  %s' % ('configuration', 'run', 'notes', 'messages', 'served', 'midi.txt' if compared else ''))
-    reports, different, overflows, left_sounding = [], 0, 0, 0
+    reports, different, overflows, left_sounding, doubling = [], 0, 0, 0, 0
+    list_contained = 'microLinnHammerOns overflow' in contained
     for r in results:
-        notes, messages, served, overflow, sounding = r.summary_values()
+        notes, messages, served, overflow, sounding, doubled = r.summary_values()
         overflows += overflow
         left_sounding += sounding > 0
+        doubling += doubled > 0
         verdict = ''
         if compared:
             diff = replay.compare_files(base_logs[(r.config.name, r.name)], r.midi)
@@ -414,9 +422,11 @@ def cmd_replay(args):
                 different += 1
                 verdict = 'DIFFERENT from line %d' % diff[0]
                 reports.append(['%s, %s:' % (r.config.name, r.name)] + diff[1])
-        log('%-18s %-14s %6d %9d %8s  %s%s%s' % (r.config.name, r.name, notes, messages, served, verdict,
-                                                 '  (hammer-on list overflow, contained)' if overflow else '',
-                                                 '  (%d notes left sounding)' % sounding if sounding else ''))
+        log('%-18s %-14s %6d %9d %8s  %s%s%s%s' % (r.config.name, r.name, notes, messages, served, verdict,
+                                                   '  (hammer-on list overflow%s)' % (', contained' if list_contained else '')
+                                                   if overflow else '',
+                                                   '  (%d notes left sounding)' % sounding if sounding else '',
+                                                   '  (%d doubled note-ons)' % doubled if doubled else ''))
     for report in reports:
         log('')
         for line in report:
@@ -424,12 +434,20 @@ def cmd_replay(args):
     log('')
     log('logs: %s/<configuration>/<run>/' % os.path.relpath(os.path.join(target.work_dir(), 'replay')))
     if overflows:
-        log('%d runs overflow microLinn\'s hammer-on list, a firmware bug; the desktop build contains it '
-            '(tools/fwlib/memfix.py)' % overflows)
+        log('%d runs overflow microLinn\'s hammer-on list, a memory bug%s' % (overflows,
+            '; the desktop build contains it (tools/fwlib/memfix.py)' if list_contained else ''))
     if left_sounding:
         log('%d runs leave notes sounding: a note-on with no note-off after it on its channel, by the end of the '
-            'run (run.txt, "midi check")' % left_sounding)
+            'run (run.txt, "midi check", which also gives the longest note)' % left_sounding)
+    if doubling:
+        log('%d runs send doubled note-ons: a note-on for a note already sounding on its channel (run.txt, '
+            '"midi check")' % doubling)
     failed = []
+    if not args.allow_contained:
+        if contained:
+            failed.append('the build under test has contained memory errors: %s' % ', '.join(contained))
+        if overflows:
+            failed.append('microLinn\'s hammer-on list overflowed in %d runs' % overflows)
     if compared:
         log('midi.txt: %s' % ('identical in all %d runs' % len(results) if not different else
                               '%d of %d runs differ' % (different, len(results))))
@@ -546,6 +564,9 @@ def main():
                    help='also run everything with AddressSanitizer: no memory error, and the same logs')
     s.add_argument('--save', help='copy the logs to this folder, gzipped, with SHA256SUMS')
     s.add_argument('--fresh', action='store_true', help='ignore cached results')
+    s.add_argument('--allow-contained', action='store_true',
+                   help='the firmware replayed is an old one with known memory errors, such as v0.1.0: contain them '
+                        '(fwlib/memfix.py) instead of failing')
     s.add_argument('--jobs', type=int, help='runs in parallel (default: the number of CPUs)')
     s.set_defaults(func=cmd_replay)
 
