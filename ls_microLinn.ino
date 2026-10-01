@@ -2243,7 +2243,7 @@ signed char prepareMicroLinnHammerOn(byte side, byte row) {
         DEBUGPRINT((0,"  microLinnNumHammerOns=")); DEBUGPRINT((0,(int)microLinnNumHammerOns));
         DEBUGPRINT((0,"\n"));      
       }
-      resetPossibleNoteCells(side, note);
+      microLinnLightHammeredNote(side, col, row, note, false);
       if (isMicroLinnOn()) {
         note = getMicroLinnCellMidiNote(side, touchInfo[col][row]);
         channel = rechannelMicroLinnGroup(side, channel, sensorCell->microLinnGroup); // bug delete group
@@ -2316,6 +2316,23 @@ void releaseMicroLinnMutedNote() {
   noteTouchMapping[sensorSplit].noteOff(sensorCell->note, sensorCell->channel);
   releaseChannel(sensorSplit, sensorCell->channel);
   sensorCell->clearMusicalData();
+  // a muted pad that slid was lit on its new pad (handleSlideTransferCandidate() in ls_handleTouches.ino)
+  if (Split[sensorSplit].colorPlayed && Split[sensorSplit].playedTouchMode == playedCell) {
+    setLed(sensorCol, sensorRow, COLOR_OFF, cellOff, LED_LAYER_PLAYED);
+  }
+}
+
+// called by prepareMicroLinnHammerOn() to unlight a muted note and by sendMicroLinnPullOff() to light a pulled-off one
+// as for any note, Played = Cell lights only its pad, Same and Blink every pad that plays the note
+void microLinnLightHammeredNote(byte side, byte col, byte row, short note, boolean on) {
+  if (!Split[side].colorPlayed) return;
+  if (Split[side].playedTouchMode == playedCell) {
+    setLed(col, row, on ? Split[side].colorPlayed : COLOR_OFF, on ? cellOn : cellOff, LED_LAYER_PLAYED);
+  }
+  else if (Split[side].playedTouchMode == playedSame || Split[side].playedTouchMode == playedBlink) {
+    if (on) highlightPossibleNoteCells(side, note);
+    else resetPossibleNoteCells(side, note);
+  }
 }
 
 // called by transferFromSameRowCell() and transferToSameRowCell() in ls_handleTouches.ino, when a touch slides to another cell
@@ -2354,7 +2371,7 @@ void sendMicroLinnPullOff() {
       //focus(sensorSplit, channel).col = col;                      // reassign focus to this cell
       //focus(sensorSplit, channel).row = row;
       note = microLinnHammerOns[i].note;
-      highlightPossibleNoteCells(sensorSplit, note);
+      microLinnLightHammeredNote(sensorSplit, col, row, note, true);
       if (isMicroLinnOn()) {
         short tuningBend = getMicroLinnTuningBend(sensorSplit, note, sensorCell->microLinnGroup);
         note = getMicroLinnMidiNote(sensorSplit, note, sensorCell->microLinnGroup);
