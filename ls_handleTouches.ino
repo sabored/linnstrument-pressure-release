@@ -1355,8 +1355,8 @@ void sendNewNote() {
 
     // if the same channel and note is already active, send a note off first
     // so that the new touch properly triggers a new note
-    if (hasActiveMidiNote(sensorSplit, sensorCell->note, sensorCell->channel)) {
-      midiSendNoteOff(sensorSplit, note, channel);                 // read from old note & channel, send to new note & channel
+    if (hasActiveMidiNote(sensorSplit, note, channel)) {           // microLinn: the midi note and channel sent, not the edostep
+      midiSendNoteOff(sensorSplit, note, channel);
     }
 
     // send the note on
