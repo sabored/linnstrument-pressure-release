@@ -191,14 +191,16 @@ recording's clock:
 - `run.txt`: the run's summary: how much of the recording was served, the touch ends the model
   added and the notes they ended, the settings checked after boot, and checks on the firmware: the
   tempo and NRPN import state after boot, how full microLinn's hammer-on list got, the channel
-  bucket's counts at the end (each should be 0 once no note is held), and the MIDI:
+  bucket's counts at the end (each should be 0 once no note is held), the untouched pads still lit
+  as played at the end (there should be none), and the MIDI:
   - the notes left sounding at the end of the run (a note-on with no note-off after it on its
     channel);
   - the doubled note-ons (a note-on for a note already sounding on its channel);
   - the longest note, from its first note-on to the note-off that ends it, or to the end of the run.
     A note that hangs and is ended much later by another note's note-off shows here.
 
-  The table of `fw.py replay` flags the first two, and channels the bucket still counts in use.
+  The table of `fw.py replay` flags the first two, channels the bucket still counts in use, and
+  played lights left on.
 - `settings.txt`, `provision.txt` and `flash.bin`: the run's settings once all were set, how they were
   provisioned, and the flash image the run booted from.
 

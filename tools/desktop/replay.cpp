@@ -1075,6 +1075,17 @@ int main(int argc, char** argv) {
   }
   printf("firmware check: channel counts at the end, with %d pads touched:%s\n", touchedAtEnd,
          counts.empty() ? " all 0" : (counts + " (LEFT IN USE)").c_str());
+  std::string lit;
+  int litCount = 0;
+  for (int c = 1; c < NUMCOLS; ++c) {
+    for (int r = 0; r < NUMROWS; ++r) {
+      if (leds[visibleLeds][LED_LAYER_PLAYED * LED_LAYER_SIZE + r * MAXCOLS + c] && cell(c, r).touched == untouchedCell) {
+        if (++litCount <= 8) lit += " " + std::to_string(c) + "," + std::to_string(r);
+      }
+    }
+  }
+  printf("firmware check: played lights on untouched pads at the end: %d%s%s\n", litCount, lit.c_str(),
+         litCount > 8 ? " ..." : "");
   printf("firmware check: after boot, tempo %d BPM, microLinn's NRPN import %s%s\n", bootTempo, bootImporting ? "on" : "off",
          bootTempo != 120 || bootImporting ? " (the firmware's own defaults are 120 BPM and off: debug preferences are on)" : "");
   std::vector<std::pair<uint64_t, int>> left;

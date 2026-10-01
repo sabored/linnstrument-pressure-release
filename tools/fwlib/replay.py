@@ -277,10 +277,12 @@ class Result:
 
     def summary_values(self):
         """notes, messages, % of recorded samples served, whether the hammer-on list overflowed, how many
-        notes were left sounding at the end, how many note-ons doubled a sounding note, and whether the
-        channel bucket still counted channels in use at the end (run.txt)"""
+        notes were left sounding at the end, how many note-ons doubled a sounding note, whether the
+        channel bucket still counted channels in use at the end, and how many untouched pads were still
+        lit as played (run.txt)"""
         notes = messages = served = None
         overflow = counts_left = False
+        lights = 0
         sounding = doubled = 0
         with open(self.summary) as f:
             for line in f:
@@ -297,7 +299,9 @@ class Result:
                     doubled = int(line.split()[2])
                 elif line.startswith('firmware check: channel counts') and 'LEFT IN USE' in line:
                     counts_left = True
-        return notes, messages, served, overflow, sounding, doubled, counts_left
+                elif line.startswith('firmware check: played lights'):
+                    lights = int(line.split(':')[2].split()[0])
+        return notes, messages, served, overflow, sounding, doubled, counts_left, lights
 
 
 def build(tc, src, out, sanitize=False):
