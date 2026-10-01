@@ -1397,7 +1397,7 @@ void sendReleasedNote() {
             cell(touchedCol, row).channel == sensorCell->channel) {
           // if there is another touch active with the same exact note and channel,
           // don't send the note off for the released note
-          if (isMicroLinnXfixOn()) {
+          if (isMicroLinnXfixOn() && !isMicroLinnHammeringOn()) {          // microLinn: a hammer-on release never retriggers here
             // but if in mono mode with X-data fixes, send a note-on for the old note, to retrigger the envelope, using the noteOff velocity
             signed char channel = sensorCell->channel;
             if (isMicroLinnOn()) {

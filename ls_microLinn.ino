@@ -2657,9 +2657,12 @@ void microLinnCalcHammerOnEdosteps(byte side) {
   if (Global.microLinn.EDO == 4 && Split[side].microLinn.hammerOnZone < 10) Split[side].microLinn.hammerOnZone = 10;
   // use paretheses to ensure division happens last. 10 not 10.0 so that edosteps are automatically floored, so 180c = 1\12
   microLinnHammerOnEdosteps[side] = (edo * Split[side].microLinn.hammerOnZone * 10) / equave;
-  // since the user is not playing atm, these should be nulls, but reset it here just to be safe
-  memset (microLinnHammerOns, -1, sizeof(microLinnHammerOns));
-  microLinnNumHammerOns = 0;
+  // the user is usually not playing atm, but keep the entries of touches still muted, so that their release ends them
+  for (signed char i = microLinnNumHammerOns - 1; i >= 0; --i) {
+    signed char col = microLinnHammerOns[i].col;
+    signed char row = microLinnHammerOns[i].row;
+    if (touchInfo[col][row].touched != ignoredCell || microLinnFindHammeredNote(col, row) != i) microLinnDeleteHammeredNote(i);
+  }
 }
 
 void microLinnResetFretboard (byte edo) {
