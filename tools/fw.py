@@ -31,6 +31,7 @@ from fwlib import arduino, desktop, layout, replay, sketch, stack, warnings  # n
 
 REPO = sketch.repo_root(os.path.dirname(os.path.abspath(__file__)))
 STACK_BUILD_PREFS = ('compiler.cpp.extra_flags=-fstack-usage', 'compiler.c.extra_flags=-fstack-usage')
+MIN_MARGIN = 256          # bytes of RAM that must be left after the stack without re-entry
 
 
 def log(msg):
@@ -296,8 +297,9 @@ def cmd_report(args):
         failures.append('new warnings')
     if ra['flash_free'] < 0:
         failures.append('the program overlaps the settings at 0xC0000')
-    if ra['ram_free'] - sa['total'] < 0:
-        failures.append('the stack without re-entry no longer fits in RAM')
+    if ra['ram_free'] - sa['total'] < MIN_MARGIN:
+        failures.append('the RAM left after the stack without re-entry is %d bytes, under the %d required'
+                        % (ra['ram_free'] - sa['total'], MIN_MARGIN))
     if args.ram_budget is not None and ra['static_ram'] - rb['static_ram'] > args.ram_budget:
         failures.append('static RAM grew by %d bytes, over the budget of %d'
                         % (ra['static_ram'] - rb['static_ram'], args.ram_budget))
@@ -398,10 +400,11 @@ def cmd_replay(args):
         log('compared with: %s (midi.txt, byte for byte)' % compared)
     log('')
     log('%-18s %-14s %6s %9s %8s  %s' % ('configuration', 'run', 'notes', 'messages', 'served', 'midi.txt' if compared else ''))
-    reports, different, overflows = [], 0, 0
+    reports, different, overflows, left_sounding = [], 0, 0, 0
     for r in results:
-        notes, messages, served, overflow = r.summary_values()
+        notes, messages, served, overflow, sounding = r.summary_values()
         overflows += overflow
+        left_sounding += sounding > 0
         verdict = ''
         if compared:
             diff = replay.compare_files(base_logs[(r.config.name, r.name)], r.midi)
@@ -411,8 +414,9 @@ def cmd_replay(args):
                 different += 1
                 verdict = 'DIFFERENT from line %d' % diff[0]
                 reports.append(['%s, %s:' % (r.config.name, r.name)] + diff[1])
-        log('%-18s %-14s %6d %9d %8s  %s%s' % (r.config.name, r.name, notes, messages, served, verdict,
-                                               '  (hammer-on list overflow, contained)' if overflow else ''))
+        log('%-18s %-14s %6d %9d %8s  %s%s%s' % (r.config.name, r.name, notes, messages, served, verdict,
+                                                 '  (hammer-on list overflow, contained)' if overflow else '',
+                                                 '  (%d notes left sounding)' % sounding if sounding else ''))
     for report in reports:
         log('')
         for line in report:
@@ -422,6 +426,9 @@ def cmd_replay(args):
     if overflows:
         log('%d runs overflow microLinn\'s hammer-on list, a firmware bug; the desktop build contains it '
             '(tools/fwlib/memfix.py)' % overflows)
+    if left_sounding:
+        log('%d runs leave notes sounding: a note-on with no note-off after it on its channel, by the end of the '
+            'run (run.txt, "midi check")' % left_sounding)
     failed = []
     if compared:
         log('midi.txt: %s' % ('identical in all %d runs' % len(results) if not different else

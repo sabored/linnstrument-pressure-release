@@ -264,9 +264,11 @@ class Result:
         self.summary = os.path.join(folder, 'run.txt')
 
     def summary_values(self):
-        """notes, messages, % of recorded samples served, whether the hammer-on list overflowed (run.txt)"""
+        """notes, messages, % of recorded samples served, whether the hammer-on list overflowed, and how
+        many notes were left sounding at the end (run.txt)"""
         notes = messages = served = None
         overflow = False
+        sounding = 0
         with open(self.summary) as f:
             for line in f:
                 if line.startswith('midi: '):
@@ -276,7 +278,9 @@ class Result:
                     served = line.split('(')[1].split(')')[0]
                 elif line.startswith('firmware check:') and 'OVERFLOW' in line:
                     overflow = True
-        return notes, messages, served, overflow
+                elif line.startswith('midi check: '):
+                    sounding = int(line.split()[2])
+        return notes, messages, served, overflow, sounding
 
 
 def build(tc, src, out, sanitize=False):

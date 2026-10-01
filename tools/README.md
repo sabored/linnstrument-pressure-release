@@ -39,7 +39,8 @@ after, plus any warning that is new. N is the most static RAM the change may add
 error if:
 - a warning is new;
 - the program would overlap the settings;
-- the stack without re-entry no longer fits in the RAM left;
+- the RAM left after the stack without re-entry (the row "RAM left after that stack") is under 256
+  bytes;
 - static RAM grew by more than N bytes;
 - the stack analysis needs attention (an excluded call it couldn't find, or its nesting bound was
   reached).
@@ -186,7 +187,10 @@ recording's clock:
   just before it (`gap`), the firmware's `currentRawZ` and `pressureZ`, the touch state, note and
   channel. With an EDO set, the note is microLinn's edostep, not the MIDI note.
 - `run.txt`: the run's summary: how much of the recording was served, the touch ends the model
-  added and the notes they ended, the settings checked after boot.
+  added and the notes they ended, the settings checked after boot, and checks on the firmware: the
+  tempo and NRPN import state after boot, how full microLinn's hammer-on list got, and the notes left
+  sounding at the end of the run (a note-on with no note-off after it on its channel, which the table
+  of `fw.py replay` also flags).
 - `settings.txt`, `provision.txt` and `flash.bin`: the run's settings once all were set, how they were
   provisioned, and the flash image the run booted from.
 

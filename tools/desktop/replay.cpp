@@ -760,6 +760,7 @@ static void printTime(FILE* f, uint64_t ns) {
 struct MidiStats {
   uint64_t messages = 0, noteOns = 0, noteOffs = 0;
   std::map<std::string, uint64_t> byType;
+  std::map<int, uint64_t> sounding;            // channel * 128 + note: when its last note-on was written, until a note-off
 } midi;
 
 static FILE* midiLog = nullptr;
@@ -768,8 +769,14 @@ static void logMessage(const std::vector<uint8_t>& msg, uint64_t writtenNs, uint
   uint8_t status = msg[0];
   ++midi.messages;
   ++midi.byType[harness::midiType(status)];
-  if ((status & 0xF0) == 0x90 && msg.size() == 3 && msg[2] > 0) ++midi.noteOns;
-  if ((status & 0xF0) == 0x80 || ((status & 0xF0) == 0x90 && msg.size() == 3 && msg[2] == 0)) ++midi.noteOffs;
+  if ((status & 0xF0) == 0x90 && msg.size() == 3 && msg[2] > 0) {
+    ++midi.noteOns;
+    midi.sounding[(status & 0x0F) * 128 + msg[1]] = writtenNs;
+  }
+  if ((status & 0xF0) == 0x80 || ((status & 0xF0) == 0x90 && msg.size() == 3 && msg[2] == 0)) {
+    ++midi.noteOffs;
+    if (msg.size() > 1) midi.sounding.erase((status & 0x0F) * 128 + msg[1]);
+  }
   if (!midiLog) return;
   printTime(midiLog, writtenNs);
   for (uint8_t b : msg) fprintf(midiLog, " %02X", b);
@@ -902,6 +909,8 @@ int main(int argc, char** argv) {
 
   setup();
   uint64_t bootNs = hal::nowNs();
+  int bootTempo = FXD4_TO_INT(fxd4CurrentTempo);
+  bool bootImporting = microLinnImportingOn;
   uint64_t leadInNs = (uint64_t)(leadInMs * 1e6);
   if (leadInNs <= bootNs) {
     fprintf(stderr, "--lead-in %.3f ms ends before the boot does (%.3f ms)\n", leadInMs, bootNs / 1e6);
@@ -1024,6 +1033,18 @@ int main(int argc, char** argv) {
          startingSettings.size(), (unsigned long long)model.switchReads);
   printf("firmware check: microLinn's hammer-on list held at most %d entries; its array holds 9%s\n", maxHammerOns,
          maxHammerOns > 9 ? " (OVERFLOW: v0.1.0 writes past it; the desktop build contains the writes)" : "");
+  printf("firmware check: after boot, tempo %d BPM, microLinn's NRPN import %s%s\n", bootTempo, bootImporting ? "on" : "off",
+         bootTempo != 120 || bootImporting ? " (the firmware's own defaults are 120 BPM and off: debug preferences are on)" : "");
+  std::vector<std::pair<uint64_t, int>> left;
+  for (auto& s : midi.sounding) left.push_back(std::make_pair(s.second, s.first));
+  std::sort(left.begin(), left.end());
+  printf("midi check: %zu notes left sounding at the end (a note-on with no note-off after it)", left.size());
+  for (size_t i = 0; i < left.size() && i < 5; ++i) {
+    printf("%s ch%d note %d on at ", i ? "," : ":", left[i].second / 128 + 1, left[i].second % 128);
+    printTime(stdout, left[i].first);
+    printf(" us");
+  }
+  printf("%s\n", left.size() > 5 ? ", ..." : "");
   printf("midi: %llu messages, %llu note-ons, %llu note-offs", (unsigned long long)midi.messages,
          (unsigned long long)midi.noteOns, (unsigned long long)midi.noteOffs);
   for (auto& t : midi.byType) printf(", %s %llu", t.first.c_str(), (unsigned long long)t.second);
