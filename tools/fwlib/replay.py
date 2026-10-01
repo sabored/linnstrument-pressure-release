@@ -43,9 +43,10 @@ DESKTOP_MODEL = 200         # the hardware model reports a LinnStrument 200 (pin
 
 
 class Config:
-    def __init__(self, name, calibration, settings, description, recordings=None):
+    def __init__(self, name, calibration, settings, description, recordings=None, events=None):
         self.name, self.calibration, self.settings, self.description = name, calibration, settings, description
         self.recordings = recordings            # the recordings it applies to, or None for all
+        self.events = events                    # NAME: replayed only with RECORDING.NAME.events
 
 
 def _words(line):
@@ -70,7 +71,7 @@ def read_configurations(path=CONFIGURATIONS_FILE):
                 base += pairs
             elif words[0] == 'config' and len(words) >= 2:
                 calibration = 'export'
-                recordings = None
+                recordings = events = None
                 settings = []
                 for k, v in pairs:
                     if k == 'calibration':
@@ -79,11 +80,13 @@ def read_configurations(path=CONFIGURATIONS_FILE):
                         calibration = v
                     elif k == 'recordings':
                         recordings = v.split(',')
+                    elif k == 'events':
+                        events = v
                     else:
                         settings.append((k, v))
                 if any(c.name == words[1] for c in configs):
                     raise RuntimeError('%s:%d: configuration %s defined twice' % (path, n, words[1]))
-                configs.append(Config(words[1], calibration, settings, comment, recordings))
+                configs.append(Config(words[1], calibration, settings, comment, recordings, events))
             else:
                 raise RuntimeError('%s:%d: expected `base SETTING=VALUE...` or `config NAME [SETTING=VALUE...]`' % (path, n))
     if not configs:
@@ -159,19 +162,28 @@ class Plan:
             raise RuntimeError('the recordings were made with different sensor settings; replay them separately')
         self.sensor = sensors.pop()
 
-    def events_file(self, recording):
-        path = os.path.join(self.events_dir, recording.name + '.events')
+    def events_file(self, recording, config=None):
+        """The recording's events file, or a configuration's own (events=NAME: RECORDING.NAME.events)."""
+        name = recording.name + ('.' + config.events if config is not None and config.events else '') + '.events'
+        path = os.path.join(self.events_dir, name)
         return path if os.path.exists(path) else None
 
     def runs(self):
-        """[(config, recording, events file or None, run name)]"""
+        """[(config, recording, events file or None, run name)]; a configuration with its own events
+        (events=NAME) is replayed only with them, as RECORDING+NAME."""
         out = []
         for config in self.configs:
             for rec in self.recordings:
                 if config.recordings is not None and rec.name not in config.recordings:
                     continue
+                ev = self.events_file(rec, config)
+                if config.events:
+                    if not ev:
+                        raise RuntimeError('configuration %s: no %s' % (config.name, os.path.join(
+                            self.events_dir, '%s.%s.events' % (rec.name, config.events))))
+                    out.append((config, rec, ev, rec.name + '+' + config.events))
+                    continue
                 out.append((config, rec, None, rec.name))
-                ev = self.events_file(rec)
                 if ev:
                     out.append((config, rec, ev, rec.name + '+events'))
         return out
@@ -265,9 +277,10 @@ class Result:
 
     def summary_values(self):
         """notes, messages, % of recorded samples served, whether the hammer-on list overflowed, how many
-        notes were left sounding at the end, and how many note-ons doubled a sounding note (run.txt)"""
+        notes were left sounding at the end, how many note-ons doubled a sounding note, and whether the
+        channel bucket still counted channels in use at the end (run.txt)"""
         notes = messages = served = None
-        overflow = False
+        overflow = counts_left = False
         sounding = doubled = 0
         with open(self.summary) as f:
             for line in f:
@@ -282,7 +295,9 @@ class Result:
                     sounding = int(line.split()[2])
                 elif line.startswith('midi check: ') and ' doubled note-ons ' in line:
                     doubled = int(line.split()[2])
-        return notes, messages, served, overflow, sounding, doubled
+                elif line.startswith('firmware check: channel counts') and 'LEFT IN USE' in line:
+                    counts_left = True
+        return notes, messages, served, overflow, sounding, doubled, counts_left
 
 
 def build(tc, src, out, sanitize=False):

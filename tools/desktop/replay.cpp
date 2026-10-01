@@ -776,6 +776,18 @@ static void noteEnded(int key, uint64_t startNs, uint64_t endNs) {
 
 static FILE* midiLog = nullptr;
 
+// The channel bucket's counts (how many touches use each channel) are private to ChannelBucket. An
+// explicit template instantiation may name a private member, so this reads them without changing the
+// firmware.
+struct BucketTakenTag {
+  typedef byte (ChannelBucket::*type)[16];
+  friend type bucketTaken(BucketTakenTag);
+};
+template <typename Tag, typename Tag::type M> struct BucketReader {
+  friend typename Tag::type bucketTaken(Tag) { return M; }
+};
+template struct BucketReader<BucketTakenTag, &ChannelBucket::taken_>;
+
 static void logMessage(const std::vector<uint8_t>& msg, uint64_t writtenNs, uint64_t) {
   uint8_t status = msg[0];
   ++midi.messages;
@@ -1048,8 +1060,21 @@ int main(int argc, char** argv) {
          "on the line that releases them)\n", (unsigned long long)notesCut, (unsigned long long)notesStop);
   printf("replay: %zu scripted events, %zu starting settings, %llu control switch reads pressed\n", events.size(),
          startingSettings.size(), (unsigned long long)model.switchReads);
+  bool listContained = sizeof(microLinnHammerOns) / sizeof(microLinnHammerOns[0]) > 9;      // fwlib/memfix.py
   printf("firmware check: microLinn's hammer-on list held at most %d entries; its array holds 9%s\n", maxHammerOns,
-         maxHammerOns > 9 ? " (OVERFLOW: v0.1.0 writes past it; the desktop build contains the writes)" : "");
+         maxHammerOns <= 9 ? "" : listContained ? " (OVERFLOW: the firmware writes past it; the desktop build contains the writes)"
+                                                : " (OVERFLOW: the firmware writes past it)");
+  int touchedAtEnd = 0;
+  for (int c = 0; c < NUMCOLS; ++c) for (int r = 0; r < NUMROWS; ++r) touchedAtEnd += cell(c, r).touched != untouchedCell;
+  std::string counts;
+  for (int s = 0; s < NUMSPLITS; ++s) {
+    for (int ch = 1; ch <= 16; ++ch) {
+      int n = (splitChannels[s].*bucketTaken(BucketTakenTag()))[ch - 1];
+      if (n) counts += std::string(" ") + (s == LEFT ? "left" : "right") + " ch" + std::to_string(ch) + "=" + std::to_string(n);
+    }
+  }
+  printf("firmware check: channel counts at the end, with %d pads touched:%s\n", touchedAtEnd,
+         counts.empty() ? " all 0" : (counts + " (LEFT IN USE)").c_str());
   printf("firmware check: after boot, tempo %d BPM, microLinn's NRPN import %s%s\n", bootTempo, bootImporting ? "on" : "off",
          bootTempo != 120 || bootImporting ? " (the firmware's own defaults are 120 BPM and off: debug preferences are on)" : "");
   std::vector<std::pair<uint64_t, int>> left;

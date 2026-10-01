@@ -375,8 +375,8 @@ def cmd_replay(args):
         % (os.path.abspath(args.recordings), ', '.join(r.name for r in recordings), ', '.join('%s %s' % s for s in plan.sensor)))
     log('configurations: %s (%s)' % (os.path.relpath(plan.configurations_file), ', '.join(c.name for c in plan.configs)))
     log('calibration from: %s' % plan.calibration_from)
-    log('scripted events: %s' % (', '.join(os.path.relpath(plan.events_file(r)) for r in recordings
-                                           if plan.events_file(r)) or 'none'))
+    log('scripted events: %s' % (', '.join(sorted(set(os.path.relpath(ev) for _, _, ev, _ in plan.runs() if ev)))
+                                 or 'none'))
     fresh = args.fresh or args.repeat
     results = replay.replay(tc, target, plan, jobs=args.jobs, log=log, fresh=fresh)
 
@@ -405,14 +405,15 @@ def cmd_replay(args):
     if compared:
         log('compared with: %s (midi.txt, byte for byte)' % compared)
     log('')
-    log('%-18s %-14s %6s %9s %8s  %s' % ('configuration', 'run', 'notes', 'messages', 'served', 'midi.txt' if compared else ''))
-    reports, different, overflows, left_sounding, doubling = [], 0, 0, 0, 0
+    log('%-22s %-14s %6s %9s %8s  %s' % ('configuration', 'run', 'notes', 'messages', 'served', 'midi.txt' if compared else ''))
+    reports, different, overflows, left_sounding, doubling, channels_left = [], 0, 0, 0, 0, 0
     list_contained = 'microLinnHammerOns overflow' in contained
     for r in results:
-        notes, messages, served, overflow, sounding, doubled = r.summary_values()
+        notes, messages, served, overflow, sounding, doubled, counts_left = r.summary_values()
         overflows += overflow
         left_sounding += sounding > 0
         doubling += doubled > 0
+        channels_left += counts_left
         verdict = ''
         if compared:
             diff = replay.compare_files(base_logs[(r.config.name, r.name)], r.midi)
@@ -422,11 +423,12 @@ def cmd_replay(args):
                 different += 1
                 verdict = 'DIFFERENT from line %d' % diff[0]
                 reports.append(['%s, %s:' % (r.config.name, r.name)] + diff[1])
-        log('%-18s %-14s %6d %9d %8s  %s%s%s%s' % (r.config.name, r.name, notes, messages, served, verdict,
-                                                   '  (hammer-on list overflow%s)' % (', contained' if list_contained else '')
-                                                   if overflow else '',
-                                                   '  (%d notes left sounding)' % sounding if sounding else '',
-                                                   '  (%d doubled note-ons)' % doubled if doubled else ''))
+        log('%-22s %-14s %6d %9d %8s  %s%s%s%s%s' % (r.config.name, r.name, notes, messages, served, verdict,
+                                                     '  (hammer-on list overflow%s)' % (', contained' if list_contained else '')
+                                                     if overflow else '',
+                                                     '  (%d notes left sounding)' % sounding if sounding else '',
+                                                     '  (%d doubled note-ons)' % doubled if doubled else '',
+                                                     '  (channels left in use)' if counts_left else ''))
     for report in reports:
         log('')
         for line in report:
@@ -436,6 +438,13 @@ def cmd_replay(args):
     if overflows:
         log('%d runs overflow microLinn\'s hammer-on list, a memory bug%s' % (overflows,
             '; the desktop build contains it (tools/fwlib/memfix.py)' if list_contained else ''))
+        if not args.allow_contained:
+            log('MEMORY ERROR: microLinn\'s hammer-on list overflows in the firmware under test (%d runs), writing '
+                'past its end. (--allow-contained replays an old firmware that has this bug, such as v0.1.0.)'
+                % overflows)
+    if channels_left:
+        log('%d runs end with the channel bucket still counting channels in use, with no note held (run.txt, '
+            '"firmware check: channel counts")' % channels_left)
     if left_sounding:
         log('%d runs leave notes sounding: a note-on with no note-off after it on its channel, by the end of the '
             'run (run.txt, "midi check", which also gives the longest note)' % left_sounding)

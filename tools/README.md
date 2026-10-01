@@ -148,12 +148,14 @@ the defaults come the test configuration's settings, then the starting settings 
 events; all are stored before the firmware boots, and each run checks after boot that they're in
 effect. `replay/configurations.txt` defines and documents the configurations: a base (Wicki-Hayden
 in microLinn's 12-EDO, channel per note on channels 2-16, the recordings' own sensor settings) and
-the variations replayed on it (7 note channels, column offset 1, EDO off, One Channel, hammer-ons,
-the other calibration state, fixed velocity with each pressure sensitivity). `--config` and `--recording` pick
-some of them.
+the variations replayed on it (7 note channels, column offset 1, EDO off, One Channel, hammer-ons
+in each MIDI mode and while microLinn recalculates its settings, the other calibration state, fixed
+velocity with each pressure sensitivity). `--config` and `--recording` pick some of them.
 
 **What a run is:** one configuration, one recording, and either no events or the recording's
-scripted events (`replay/NAME.events`, if there is one; `--events-dir` chooses another folder).
+scripted events (`replay/NAME.events`, if there is one; `--events-dir` chooses another folder). A
+configuration with its own events (`events=EVENTS` in `configurations.txt`) is replayed only with
+`replay/NAME.EVENTS.events`.
 
 **How a recording is played** (the top of `desktop/replay.cpp` has the details): each recorded
 reading is served where the firmware reads the sensor, at its recorded time, and the firmware's own
@@ -188,14 +190,15 @@ recording's clock:
   channel. With an EDO set, the note is microLinn's edostep, not the MIDI note.
 - `run.txt`: the run's summary: how much of the recording was served, the touch ends the model
   added and the notes they ended, the settings checked after boot, and checks on the firmware: the
-  tempo and NRPN import state after boot, how full microLinn's hammer-on list got, and the MIDI:
+  tempo and NRPN import state after boot, how full microLinn's hammer-on list got, the channel
+  bucket's counts at the end (each should be 0 once no note is held), and the MIDI:
   - the notes left sounding at the end of the run (a note-on with no note-off after it on its
     channel);
   - the doubled note-ons (a note-on for a note already sounding on its channel);
   - the longest note, from its first note-on to the note-off that ends it, or to the end of the run.
     A note that hangs and is ended much later by another note's note-off shows here.
 
-  The table of `fw.py replay` flags the first two.
+  The table of `fw.py replay` flags the first two, and channels the bucket still counts in use.
 - `settings.txt`, `provision.txt` and `flash.bin`: the run's settings once all were set, how they were
   provisioned, and the flash image the run booted from.
 
@@ -241,4 +244,4 @@ recording's clock:
 | `desktop/smoke.cpp` | The default harness |
 | `desktop/replay.cpp` | The replay harness: the recordings' sensor model, scripted events, the logs |
 | `replay/configurations.txt` | The replay's test configurations, documented |
-| `replay/NAME.events` | The scripted events played with recording NAME, with the starting settings they need |
+| `replay/NAME.events` | The scripted events played with recording NAME, with the starting settings they need; `replay/NAME.EVENTS.events` are a configuration's own (`events=EVENTS`) |
