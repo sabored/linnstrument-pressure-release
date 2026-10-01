@@ -1,20 +1,21 @@
 # Scripted events for the "lifts" recording (single notes), in ms on the recording's clock.
-# With the settings export's switch assignments (Switch 2 and the right footswitch Transpose Up, the
-# left footswitch Transpose Down), the first part transposes while a note is held, and returns to no
-# transposition. The second part makes the left footswitch a sustain pedal through microLinn's NRPN
-# importing, presses it while a note is held, and puts things back.
+# The first part transposes while a note is held, then returns to no transposition. The second presses
+# a sustain pedal while a note is held, and the last line queries a setting by NRPN.
 
-45200   switch 2 150         # Switch 2: Transpose Up, a note held (44.75-46.65 s)
-105500  pedal right down     # Transpose Up, a note held (105.15-107.75 s)
-105800  pedal right up
-106600  pedal left down      # Transpose Down, twice: back to no transposition
-106900  pedal left up
-107200  pedal left down
-107500  pedal left up
+setting switch2 transposeUp            # the switches these events use; the others keep their defaults
+setting switch1 transposeDown
+setting footLeft sustain
 
-127000  set importing 1
-127100  nrpn 230 2           # Global Foot Left Assignment: Sustain
-128000  pedal left down      # a note held (127.75-129.4 s)
-131000  pedal left up
-132000  midi B0 63 01 B0 62 66 B0 06 00 B0 26 12   # NRPN 230 = 18: the left footswitch back to Transpose Down
-132100  set importing 0
+45200   press switch2                  # Transpose Up, a note held (44.75-46.65 s)
+45350   release switch2
+105500  press switch2                  # Transpose Up again, a note held (105.15-107.75 s)
+105650  release switch2
+106600  press switch1                  # Transpose Down, twice: back to no transposition
+106750  release switch1
+107200  press switch1
+107350  release switch1
+
+128000  press footLeft                 # the sustain pedal down, a note held (127.75-129.4 s)
+131000  release footLeft
+
+132000  nrpn 299 259                   # query: Global MIDI CC For Foot Left Sustain

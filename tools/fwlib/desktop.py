@@ -3,7 +3,8 @@
 1. arduino-builder -preprocess combines the .ino files and generates the prototypes exactly as the
    IDE does (the same .ino.cpp as the instrument build compiles).
 2. longfix rewrites that file and the sketch's .h files so `long` is 32-bit, and marks the clock
-   reads inside the firmware's busy-waits so that each pass of their loops takes time.
+   reads inside the firmware's busy-waits so that each pass of their loops takes time; memfix gives
+   the arrays the firmware is known to overrun the room it reaches into.
 3. The translation unit is: sketch_prelude.h, the rewritten sketch, sketch_tail.h, then the harness.
    The sketch's #include <Arduino.h>, <SPI.h> and <DueFlashStorage.h> find the stand-ins in
    tools/desktop/include; hal.cpp is compiled separately and implements them.
@@ -17,7 +18,7 @@ import os
 import shutil
 import subprocess
 
-from . import arduino, longfix
+from . import arduino, longfix, memfix
 
 TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DESKTOP_DIR = os.path.join(TOOLS_DIR, 'desktop')
@@ -62,8 +63,13 @@ def _run(cmd, what):
     return r.stdout + r.stderr
 
 
-def build(tc, sketch_dir, out_dir, harness=DEFAULT_HARNESS, log=print):
-    """Builds the desktop executable. Returns {'exe', 'sketch_object', 'rewrites'}."""
+# AddressSanitizer: reports any access outside a variable or allocation, and stops the program
+SANITIZE_FLAGS = ['-fsanitize=address', '-fno-omit-frame-pointer']
+
+
+def build(tc, sketch_dir, out_dir, harness=DEFAULT_HARNESS, log=print, sanitize=False):
+    """Builds the desktop executable (with AddressSanitizer if sanitize). Returns {'exe', 'sketch_object',
+    'rewrites', 'busy_waits', 'contained', 'src_dir'}."""
     src = os.path.join(out_dir, 'src')
     gen = os.path.join(out_dir, 'generated')
     for d in (src, gen):
@@ -80,6 +86,7 @@ def build(tc, sketch_dir, out_dir, harness=DEFAULT_HARNESS, log=print):
             f.write(text)
     text, counts = longfix.rewrite(open(combined, encoding='utf-8', errors='surrogateescape').read())
     text, busy = longfix.mark_busy_waits(text)
+    text, contained = memfix.contain(text)
     rewrites['linnstrument-firmware.ino.cpp'] = counts
     unit = ('#include "sketch_prelude.h"\n' + text +
             '\n#line 1 "sketch_tail.h"\n#include "sketch_tail.h"\n#line 1 "%s"\n#include "%s"\n' % (harness, harness))
@@ -95,11 +102,12 @@ def build(tc, sketch_dir, out_dir, harness=DEFAULT_HARNESS, log=print):
     hal_o = os.path.join(out_dir, 'hal.o')
     exe = os.path.join(out_dir, 'linnstrument-desktop')
     log('compiling the sketch for the desktop (%s)' % os.path.basename(cxx))
-    _run([cxx] + CXXFLAGS + ['-w'] + includes + ['-c', unit_path, '-o', sketch_o], 'desktop compile of the sketch')
-    _run([cxx] + CXXFLAGS + ['-Wall', '-Wextra'] + includes + ['-c', os.path.join(DESKTOP_DIR, 'hal.cpp'), '-o', hal_o],
+    extra = SANITIZE_FLAGS if sanitize else []
+    _run([cxx] + CXXFLAGS + extra + ['-w'] + includes + ['-c', unit_path, '-o', sketch_o], 'desktop compile of the sketch')
+    _run([cxx] + CXXFLAGS + extra + ['-Wall', '-Wextra'] + includes + ['-c', os.path.join(DESKTOP_DIR, 'hal.cpp'), '-o', hal_o],
          'desktop compile of hal.cpp')
-    _run([cxx, sketch_o, hal_o, '-o', exe], 'desktop link')
-    return {'exe': exe, 'sketch_object': sketch_o, 'rewrites': rewrites, 'busy_waits': busy,
+    _run([cxx] + extra + [sketch_o, hal_o, '-o', exe], 'desktop link')
+    return {'exe': exe, 'sketch_object': sketch_o, 'rewrites': rewrites, 'busy_waits': busy, 'contained': contained,
             'src_dir': src}
 
 

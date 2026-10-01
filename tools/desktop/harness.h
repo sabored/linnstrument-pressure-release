@@ -1,14 +1,16 @@
 // Shared by the desktop build's harnesses (smoke.cpp, replay.cpp). A harness is compiled at the end of
 // the sketch's translation unit, after sketch_tail.h, so this code can use the firmware's globals and
 // functions directly. It holds what every harness needs: grouping the UART's bytes into MIDI messages,
-// reading files, and provisioning, which is what the instrument goes through after a firmware update.
-//
-// Provisioning (--provision) boots on erased flash, as after a firmware update, restores a settings
-// export the way the LinnStrument Updater does, ending included, and leaves the flash image for a
-// second run to boot from, as after a power cycle. Settings without a calibration are stored as they
-// are (--calibration as-exported, the default), or given a stand-in calibration first (--calibration
-// stand-in). Named settings (--set NAME=VALUE, see SETTINGS below) are changed before the settings are
-// stored, so the boot that follows applies them like any stored setting.
+// reading files, named settings, and provisioning: the flash image a second run boots from, as after a
+// power cycle. There are two kinds of provisioning, both starting with a boot on erased flash, as after
+// a firmware update:
+// - provision(): restores a settings export the way the LinnStrument Updater does, ending included.
+//   Settings without a calibration are stored as they are (--calibration as-exported, the default), or
+//   given a stand-in calibration first (--calibration stand-in).
+// - provisionTestSettings(): keeps the firmware's own defaults and takes only the calibration from a
+//   settings export, so a test's settings don't depend on what the export happens to hold.
+// Both change named settings (--set NAME=VALUE, see SETTINGS below) before the settings are stored, so
+// the boot that follows applies them like any stored setting.
 #ifndef LINNSTRUMENT_DESKTOP_HARNESS_H
 #define LINNSTRUMENT_DESKTOP_HARNESS_H
 
@@ -109,51 +111,114 @@ inline bool parseInt(const std::string& s, int& out) {
 
 // ---------------------------------------------------------------- named settings
 
-// Settings a harness can change by name. Those marked `stored` are part of the stored settings:
-// provisioning sets them before the settings are stored, so the boot that follows applies them as it
-// applies any stored setting. Those marked `running` can be changed while the firmware runs (a replay's
-// `set` event) and take effect as the firmware's own code would make them. To change most settings
-// while running, prefer sending the firmware its NRPN (with `importing` on), which runs the firmware's
-// own code. Per-split settings apply to both splits.
+// Settings a harness can change by name, with NAME=VALUE (--set) or NAME VALUE (a replay's events).
+// Those marked `stored` are part of the stored settings: provisioning sets them before the settings are
+// stored, so the boot that follows applies them as it applies any stored setting, and `get` reads back
+// the value in effect, so a run can check after boot that it got what it asked for. Those marked
+// `running` can be changed while the firmware runs. A value is a number in [min, max], or one of the
+// setting's names or their numbers. Per-split settings apply to the left split, which covers the whole surface while
+// the split is off. To change most settings while running, send the firmware their NRPN instead.
+struct NamedValue { const char* name; int value; };
+
 struct Setting {
   const char* name;
   int min, max;
+  const NamedValue* names;         // nullptr-terminated, or nullptr
   bool stored, running;
   void (*set)(int value);
+  int (*get)();
   const char* what;
 };
 
+static const NamedValue OFF_NAMES[] = {{"off", 4}, {nullptr, 0}};
+static const NamedValue MIDI_MODE_NAMES[] = {{"oneChannel", 0}, {"channelPerNote", 1}, {"channelPerRow", 2}, {nullptr, 0}};
+static const NamedValue PRESSURE_NAMES[] = {{"low", 0}, {"medium", 1}, {"high", 2}, {nullptr, 0}};
+static const NamedValue VELOCITY_NAMES[] = {{"low", 0}, {"medium", 1}, {"high", 2}, {"fixed", 3}, {nullptr, 0}};
+static const NamedValue HAMMER_ON_NAMES[] = {{"off", 0}, {"R", 1}, {"L", 2}, {"R+L", 3}, {nullptr, 0}};
+static const NamedValue ASSIGNMENT_NAMES[] = {
+  {"octaveDown", ASSIGNED_OCTAVE_DOWN}, {"octaveUp", ASSIGNED_OCTAVE_UP}, {"sustain", ASSIGNED_SUSTAIN},
+  {"cc65", ASSIGNED_CC_65}, {"arpeggiator", ASSIGNED_ARPEGGIATOR}, {"altSplit", ASSIGNED_ALTSPLIT},
+  {"autoOctave", ASSIGNED_AUTO_OCTAVE}, {"tapTempo", ASSIGNED_TAP_TEMPO}, {"legato", ASSIGNED_LEGATO},
+  {"latch", ASSIGNED_LATCH}, {"presetUp", ASSIGNED_PRESET_UP}, {"presetDown", ASSIGNED_PRESET_DOWN},
+  {"reversePitchX", ASSIGNED_REVERSE_PITCH_X}, {"sequencerPlay", ASSIGNED_SEQUENCER_PLAY},
+  {"sequencerPrev", ASSIGNED_SEQUENCER_PREV}, {"sequencerNext", ASSIGNED_SEQUENCER_NEXT},
+  {"midiClock", ASSIGNED_STANDALONE_MIDI_CLOCK}, {"sequencerMute", ASSIGNED_SEQUENCER_MUTE},
+  {"transposeDown", ASSIGNED_TRANSPOSE_DOWN}, {"transposeUp", ASSIGNED_TRANSPOSE_UP},
+  {"microLinnOctaveUp", ASSIGNED_MICROLINN_8VE_UP}, {"microLinnOctaveDown", ASSIGNED_MICROLINN_8VE_DOWN},
+  {"microLinnPrevPreset", ASSIGNED_MICROLINN_PREV_PRESET}, {"microLinnPrevMemory", ASSIGNED_MICROLINN_PREV_MEMORY},
+  {"microLinnPrevScale", ASSIGNED_MICROLINN_PREV_SCALE}, {"edoUp", ASSIGNED_MICROLINN_EDO_UP},
+  {"edoDown", ASSIGNED_MICROLINN_EDO_DOWN}, {"disabled", ASSIGNED_DISABLED}, {nullptr, 0}};
+
+// a switch's assignment, as the Global Foot/Switch Assignment NRPNs (228-231) set it
+template <int SWITCH> void setAssignment(int v) {
+  Global.switchAssignment[SWITCH] = v;
+  if (v >= ASSIGNED_TAP_TEMPO && v != ASSIGNED_DISABLED) Global.customSwitchAssignment[SWITCH] = v;
+}
+template <int SWITCH> int getAssignment() { return Global.switchAssignment[SWITCH]; }
+template <int SWITCH> void setSustainCC(int v) { Global.ccForSwitchSustain[SWITCH] = v; }
+template <int SWITCH> int getSustainCC() { return Global.ccForSwitchSustain[SWITCH]; }
+
+inline int mpePolyphony() {
+  if (!Split[LEFT].mpe) return 0;
+  int n = 0;
+  for (int c = 0; c < 16; ++c) n += Split[LEFT].midiChanSet[c] ? 1 : 0;
+  return n;
+}
+
+#define HARNESS_SWITCH(NAME, SWITCH)                                                                        \
+  {NAME, 0, MAX_ASSIGNED, ASSIGNMENT_NAMES, true, false, setAssignment<SWITCH>, getAssignment<SWITCH>,        \
+   "the switch's assignment (Global Settings), e.g. sustain, transposeUp, transposeDown"},                    \
+  {NAME ".sustainCC", 0, 127, nullptr, true, false, setSustainCC<SWITCH>, getSustainCC<SWITCH>,             \
+   "the CC the switch sends when assigned to Sustain (holding SUSTAIN in Global Settings)"}
+
 static const Setting SETTINGS[] = {
-  {"edo", 4, 55, true, false, [](int v) { Global.microLinn.EDO = v; },
-   "microLinn's EDO; 4 is OFF"},
-  {"colOffset", 1, 10, true, false, [](int v) { for (int s = 0; s < NUMSPLITS; ++s) Split[s].microLinn.colOffset = v; },
-   "microLinn's column offset; 1 is OFF"},
-  {"midiMode", 0, 2, true, false, [](int v) { for (int s = 0; s < NUMSPLITS; ++s) Split[s].midiMode = v; },
-   "MIDI mode: 0 one channel, 1 channel per note, 2 channel per row"},
-  {"hammerOnMode", 0, 3, true, false, [](int v) { for (int s = 0; s < NUMSPLITS; ++s) Split[s].microLinn.setHammerOnMode(v); },
-   "microLinn's hammer-ons: 0 OFF, 1 R, 2 L, 3 R+L"},
-  {"hammerOnZone", 1, 121, true, false, [](int v) { for (int s = 0; s < NUMSPLITS; ++s) Split[s].microLinn.hammerOnZone = v; },
-   "microLinn's hammer-on zone, in tens of cents; 121 is ALL"},
-  {"hammerOnWait", 0, 50, true, false, [](int v) { for (int s = 0; s < NUMSPLITS; ++s) Split[s].microLinn.hammerOnWait = v; },
-   "microLinn's hammer-on wait, in tens of milliseconds"},
-  {"pressureSensitivity", 0, 2, true, false, [](int v) { Global.pressureSensitivity = (PressureSensitivity)v; },
-   "0 low, 1 medium, 2 high"},
-  {"velocitySensitivity", 0, 3, true, false, [](int v) { Global.velocitySensitivity = (VelocitySensitivity)v; },
-   "0 low, 1 medium, 2 high, 3 fixed"},
-  {"pressureAftertouch", 0, 1, true, false, [](int v) { Global.pressureAftertouch = v; },
-   "pressure only in the top of the range"},
-  {"sensorSensitivityZ", 1, 255, true, false, [](int v) { Device.sensorSensitivityZ = v; },
-   "the sensor's pressure scaling, in percent"},
-  {"sensorLoZ", 0, 4095, true, false, [](int v) { Device.sensorLoZ = v; },
-   "raw pressure that starts a touch"},
-  {"sensorFeatherZ", 0, 4095, true, false, [](int v) { Device.sensorFeatherZ = v; },
-   "raw pressure that continues a touch"},
-  {"sensorRangeZ", 0, 4095, true, false, [](int v) { Device.sensorRangeZ = v; },
-   "the sensor's pressure range"},
-  {"importing", 0, 1, false, true, [](int v) { microLinnImportingOn = v; },
-   "microLinn's NRPN importing (Global Settings > microLinn > IMP), which the firmware needs to act on "
-   "any NRPN but the 299 query; not stored"},
+  {"edo", 4, 55, OFF_NAMES, true, false, [](int v) { Global.microLinn.EDO = v; },
+   []() -> int { return Global.microLinn.EDO; }, "microLinn's EDO; off (4) for none"},
+  {"rowOffset", 0, 127, nullptr, true, false, [](int v) { Global.rowOffset = v; },
+   []() -> int { return Global.rowOffset; }, "the row offset (Global Settings), in semitones"},
+  {"colOffset", 1, 10, nullptr, true, false, [](int v) { Split[LEFT].microLinn.colOffset = v; },
+   []() -> int { return Split[LEFT].microLinn.colOffset; }, "microLinn's column offset; 1 is OFF"},
+  {"mpe", 0, 15, nullptr, true, false,
+   [](int v) { if (v) enableMpe(LEFT, 1, v); else disableMpe(LEFT); }, mpePolyphony,
+   "MPE with main channel 1 and this many note channels from channel 2, as the firmware sets it up "
+   "(enableMpe(): channel per note, bend range 48, Y as CC 74, Z as channel pressure); 0 turns MPE off"},
+  {"midiMode", 0, 2, MIDI_MODE_NAMES, true, false,
+   [](int v) { Split[LEFT].midiMode = v; if (v != channelPerNote) disableMpe(LEFT); },
+   []() -> int { return Split[LEFT].midiMode; }, "the MIDI mode, as the per-split settings set it"},
+  {"hammerOnMode", 0, 3, HAMMER_ON_NAMES, true, false, [](int v) { Split[LEFT].microLinn.setHammerOnMode(v); },
+   []() -> int { return Split[LEFT].microLinn.hammerOnMode(); }, "microLinn's hammer-ons"},
+  {"hammerOnZone", 1, 121, nullptr, true, false, [](int v) { Split[LEFT].microLinn.hammerOnZone = v; },
+   []() -> int { return Split[LEFT].microLinn.hammerOnZone; }, "microLinn's hammer-on zone, in tens of cents; 121 is ALL"},
+  {"hammerOnWait", 0, 50, nullptr, true, false, [](int v) { Split[LEFT].microLinn.hammerOnWait = v; },
+   []() -> int { return Split[LEFT].microLinn.hammerOnWait; }, "microLinn's hammer-on wait, in tens of milliseconds"},
+  {"pressureSensitivity", 0, 2, PRESSURE_NAMES, true, false,
+   [](int v) { Global.pressureSensitivity = (PressureSensitivity)v; }, []() -> int { return Global.pressureSensitivity; },
+   "pressure sensitivity (Global Settings)"},
+  {"velocitySensitivity", 0, 3, VELOCITY_NAMES, true, false,
+   [](int v) { Global.velocitySensitivity = (VelocitySensitivity)v; }, []() -> int { return Global.velocitySensitivity; },
+   "velocity sensitivity (Global Settings)"},
+  {"pressureAftertouch", 0, 1, nullptr, true, false, [](int v) { Global.pressureAftertouch = v; },
+   []() -> int { return Global.pressureAftertouch; }, "pressure only in the top of the range"},
+  {"sensorSensitivityZ", 1, 255, nullptr, true, false, [](int v) { Device.sensorSensitivityZ = v; },
+   []() -> int { return Device.sensorSensitivityZ; }, "the sensor's pressure scaling, in percent"},
+  {"sensorLoZ", 0, 4095, nullptr, true, false, [](int v) { Device.sensorLoZ = v; },
+   []() -> int { return Device.sensorLoZ; }, "raw pressure that starts a touch"},
+  {"sensorFeatherZ", 0, 4095, nullptr, true, false, [](int v) { Device.sensorFeatherZ = v; },
+   []() -> int { return Device.sensorFeatherZ; }, "raw pressure that continues a touch"},
+  {"sensorRangeZ", 0, 4095, nullptr, true, false, [](int v) { Device.sensorRangeZ = v; },
+   []() -> int { return Device.sensorRangeZ; }, "the sensor's pressure range"},
+  HARNESS_SWITCH("footLeft", SWITCH_FOOT_L),
+  HARNESS_SWITCH("footRight", SWITCH_FOOT_R),
+  HARNESS_SWITCH("footBoth", SWITCH_FOOT_B),
+  HARNESS_SWITCH("switch1", SWITCH_SWITCH_1),
+  HARNESS_SWITCH("switch2", SWITCH_SWITCH_2),
+  {"importing", 0, 1, nullptr, false, true, [](int v) { microLinnImportingOn = v; }, nullptr,
+   "microLinn's NRPN importing (IMP on its settings screen): the firmware acts on NRPNs other than the 299 "
+   "query only while it's on; not stored, and v0.1.0 switches it on at every boot (microLinn's debug "
+   "preferences, microLinnSetupKitesPersonalPrefs())"},
 };
+
+#undef HARNESS_SWITCH
 
 inline const Setting* findSetting(const std::string& name) {
   for (const Setting& s : SETTINGS) {
@@ -170,9 +235,21 @@ inline std::string checkSetting(const std::string& name, const std::string& valu
     for (const Setting& s : SETTINGS) known += std::string(known.empty() ? "" : ", ") + s.name;
     return "unknown setting '" + name + "' (known: " + known + ")";
   }
-  if (!parseInt(value, v) || v < setting->min || v > setting->max) {
+  for (const NamedValue* n = setting->names; n && n->name; ++n) {
+    if (value == n->name) {
+      v = n->value;
+      return "";
+    }
+  }
+  bool named = false;
+  if (parseInt(value, v)) {
+    for (const NamedValue* n = setting->names; n && n->name; ++n) named |= v == n->value;
+  }
+  if (!parseInt(value, v) || ((v < setting->min || v > setting->max) && !named)) {
+    std::string names;
+    for (const NamedValue* n = setting->names; n && n->name; ++n) names += std::string(", ") + n->name;
     return "setting " + name + ": '" + value + "' is not a number from " + std::to_string(setting->min) + " to " +
-           std::to_string(setting->max);
+           std::to_string(setting->max) + names;
   }
   return "";
 }
@@ -189,10 +266,35 @@ inline bool parseOverride(const char* arg, Override& o, std::string& error) {
   error = checkSetting(a.substr(0, eq), a.substr(eq + 1), o.setting, o.value);
   if (!error.empty()) return false;
   if (!o.setting->stored) {
-    error = "setting " + std::string(o.setting->name) + " isn't stored, so it can't be set when provisioning";
+    error = "setting " + std::string(o.setting->name) + " isn't stored, so it can't be set before the firmware boots";
     return false;
   }
   return true;
+}
+
+// The values in effect of the settings in `asked`, read back after they have all been set, once per
+// setting, in order. A setting can end up with another value than the one asked for when a later one
+// changes it, as the firmware's own menus do (midiMode=oneChannel turns MPE off).
+inline std::vector<Override> settingsInEffect(const std::vector<Override>& asked) {
+  std::vector<Override> out;
+  for (const Override& o : asked) {
+    bool seen = false;
+    for (const Override& e : out) seen |= e.setting == o.setting;
+    if (!seen && o.setting->get) out.push_back({o.setting, o.setting->get()});
+  }
+  return out;
+}
+
+// After boot: every setting in `expected` must have that value. Returns the mismatches.
+inline std::vector<std::string> checkSettings(const std::vector<Override>& expected) {
+  std::vector<std::string> wrong;
+  for (const Override& o : expected) {
+    if (o.setting->get && o.setting->get() != o.value) {
+      wrong.push_back(std::string(o.setting->name) + " is " + std::to_string(o.setting->get()) + ", not " +
+                      std::to_string(o.value));
+    }
+  }
+  return wrong;
 }
 
 // ---------------------------------------------------------------- provisioning
@@ -290,6 +392,69 @@ inline bool provision(const char* restore, bool standIn, const std::vector<Overr
     printf("provisioning: NOT calibrated; the instrument would open its calibration screen and store "
            "nothing, so the harness switched Update OS off, which stores the settings as they are\n");
   }
+  return true;
+}
+
+// The replay's provisioning, right after setup() on erased flash, which leaves the firmware's own
+// defaults in the settings: keeps those defaults and takes only the calibration from `calibrationFrom`
+// (a settings export, read through the firmware's own migration of older settings versions). With
+// `otherCalibration`, the calibration state is the opposite of the export's: a calibration is cleared
+// back to the firmware's defaults, and an uncalibrated export's data is marked valid, as a calibration
+// would mark it, which turns on the code only a calibrated instrument runs (phantom-touch rejection).
+// Then the named settings, in order, and the settings are stored with Update OS off. `inEffect` gets
+// the values the named settings have once all of them are set (settingsInEffect()).
+inline bool provisionTestSettings(const char* calibrationFrom, bool otherCalibration, const std::vector<Override>& overrides,
+                                  std::vector<Override>& inEffect) {
+  static Configuration defaults;
+  memcpy(&defaults, &config, sizeof(Configuration));
+  const char* source = "the firmware's defaults";
+  if (calibrationFrom) {
+    std::vector<uint8_t> data;
+    if (!readFile(calibrationFrom, data)) {
+      fprintf(stderr, "cannot read %s\n", calibrationFrom);
+      return false;
+    }
+    dueFlashStorage.write(SETTINGS_OFFSET, (byte*)data.data(), (uint32_t)data.size());
+    if (!upgradeConfigurationSettings((int32_t)data.size(), dueFlashStorage.readAddress(SETTINGS_OFFSET))) {
+      fprintf(stderr, "the firmware rejected the settings in %s (version %d, %zu bytes; it expects %zu)\n",
+              calibrationFrom, data.empty() ? -1 : data[0], data.size(), sizeof(Configuration));
+      return false;
+    }
+    memcpy(defaults.device.calRows, Device.calRows, sizeof(Device.calRows));
+    memcpy(defaults.device.calCols, Device.calCols, sizeof(Device.calCols));
+    defaults.device.calCrc = Device.calCrc;
+    defaults.device.calCrcCalculated = Device.calCrcCalculated;
+    defaults.device.calibrated = Device.calibrated;
+    defaults.device.calibrationHealed = Device.calibrationHealed;
+    source = "the settings export";
+  }
+  memcpy(&config, &defaults, sizeof(Configuration));
+  applyConfiguration();
+  printf("provisioning: the firmware's default settings, with the calibration of %s (%s)\n", source,
+         Device.calibrated ? "calibrated" : "not calibrated");
+  if (otherCalibration) {
+    if (Device.calibrated) {
+      initializeCalibrationData();
+      printf("provisioning: calibration cleared, as on an instrument whose calibration was reset\n");
+    }
+    else {
+      standInCalibration();
+      printf("provisioning: calibration data marked valid, as a calibration would mark it (stand-in)\n");
+    }
+  }
+  applyOverrides(overrides);
+  inEffect = settingsInEffect(overrides);
+  for (const Override& e : inEffect) {
+    for (auto o = overrides.rbegin(); o != overrides.rend(); ++o) {
+      if (o->setting != e.setting) continue;
+      if (o->value != e.value) {
+        printf("provisioning: %s is %d after the settings that follow it (it was set to %d)\n", e.setting->name,
+               e.value, o->value);
+      }
+      break;
+    }
+  }
+  updateOsOff();
   return true;
 }
 

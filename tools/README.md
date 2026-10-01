@@ -52,8 +52,10 @@ describes the model and its assumptions.
 python3 tools/fw.py replay --recordings DIR
 ```
 
-Plays the sensor recordings in DIR through both builds and checks that the MIDI is identical (see
-Replays below). A change that must not change what the instrument sends has to pass it.
+Plays the sensor recordings in DIR through both builds, in every test configuration, and checks that
+the MIDI is identical (see Replays below). A change that must not change what the instrument sends
+has to pass it. Add `--repeat --sanitize` to also check that the replay is repeatable and free of
+memory errors.
 
 ## Commands
 
@@ -66,7 +68,7 @@ Replays below). A change that must not change what the instrument sends has to p
 | `report [--ref REF] [--against BASE] [--ram-budget N]` | All of the above, before and after |
 | `desktop [--ref REF] [--run] [--settings EXPORT] [--calibration as-exported\|stand-in] [--seconds S] [--midi-log FILE] [--harness FILE]` | Builds the whole sketch for this computer; `--run` boots it and runs it |
 | `layout [--ref REF] [-v]` | Checks that the desktop build lays out every struct as the instrument does; fails on any difference not explained by a pointer, and on a struct missing from either build |
-| `replay [--ref REF] [--against BASE \| --baseline DIR \| --no-compare] --recordings DIR [--config NAME]... [--recording NAME]... [--repeat] [--save DIR]` | Plays sensor recordings through the firmware in every configuration, with and without their scripted events, and compares the MIDI with BASE byte for byte; fails on any difference |
+| `replay [--ref REF] [--against BASE \| --baseline DIR \| --no-compare] --recordings DIR [--config NAME]... [--recording NAME]... [--repeat] [--sanitize] [--save DIR]` | Plays sensor recordings through the firmware in every test configuration, with and without their scripted events, and compares the MIDI with BASE byte for byte; fails on any difference |
 
 Without `--ref`, a command works on the working tree, uncommitted changes included. With `--ref`, it
 works on that commit, and its results are cached in `build/fw/<commit>/`.
@@ -106,7 +108,7 @@ $EXE --flash-in flash.bin --seconds 8 --midi-in "0.5,B06302B0622BB00610B0260F" -
 ```
 
 - `--set NAME=VALUE` (with `--provision`) changes a setting before the settings are stored; the
-  names are listed in `desktop/harness.h`.
+  names are listed in `desktop/harness.h` (SETTINGS).
 - `--press COL,ROW,FROM,TO,Z` holds a pad from FROM to TO seconds at raw pressure Z (0-4095, before
   the firmware's sensitivity and bias), with the finger at the pad's centre as the calibration sees
   it. It's a quick check that touches reach the note code.
@@ -128,68 +130,77 @@ always compared on the same hardware model.
 python3 tools/fw.py replay --recordings DIR
 ```
 
-Plays sensor recordings through the whole firmware on the desktop build and compares the MIDI it
-sends with what the previous build (the merge-base of HEAD with `fork/main`, or `--against REF`)
-sends from the same input, byte for byte. It exits with an error if any run differs, and prints the
-first differing lines of each with their context. `LINNSTRUMENT_RECORDINGS` can stand in for
-`--recordings`.
+Plays sensor recordings through the whole firmware on the desktop build, in a set of test
+configurations, and compares the MIDI it sends with what the previous build (the merge-base of HEAD
+with `fork/main`, or `--against REF`) sends from the same input, byte for byte. It exits with an error
+if any run differs, and prints the first differing lines of each with their context.
+`LINNSTRUMENT_RECORDINGS` can stand in for `--recordings`.
 
 **Recordings** are made with the capture build's recorder (`linnstrument_capture.py`), which isn't
 part of this repository. `DIR` holds, for each recording NAME, `NAME_samples.csv` (one row per scan
-of a touched pad) and `NAME_settings.csv` (the sensor settings it was made with), plus the settings
-export to provision with, `linnstrument_settings.bin` by default (`--settings` chooses another).
+of a touched pad) and `NAME_settings.csv` (the sensor settings it was made with).
+
+**Settings.** The runs don't use an instrument's settings. Each starts from the firmware's own
+defaults (what a first boot on erased flash leaves) and takes only the calibration from a settings
+export (`DIR/linnstrument_settings.bin` by default; `--calibration-from` chooses another). On top of
+the defaults come the test configuration's settings, then the starting settings of the run's scripted
+events; all are stored before the firmware boots, and each run checks after boot that they're in
+effect. `replay/configurations.txt` defines and documents the configurations: a base (Wicki-Hayden
+in microLinn's 12-EDO, channel per note on channels 2-16, the recordings' own sensor settings) and
+the variations replayed on it (column offset 1, EDO off, One Channel, hammer-ons, the other
+calibration state, fixed velocity with each pressure sensitivity). `--config` and `--recording` pick
+some of them.
 
 **What a run is:** one configuration, one recording, and either no events or the recording's
 scripted events (`replay/NAME.events`, if there is one; `--events-dir` chooses another folder).
-Every configuration starts from the settings export, with the recordings' sensor settings, and
-changes a few settings (`fwlib/replay.py`, `CONFIGURATIONS`):
-
-| Configuration | Changed from the export |
-|---|---|
-| `export` | nothing |
-| `col1` | column offset 1 |
-| `no-edo` | EDO off |
-| `no-edo-col1` | EDO off, column offset 1 |
-| `one-channel` | MIDI mode One Channel |
-| `hammer-ons` | hammer-ons R (highest note wins), zone 200 cents, no wait |
-| `calibrated` | the calibration data marked as valid (`--calibration stand-in`), which turns on the code only a calibrated instrument runs |
-
-`--config` and `--recording` pick some of them.
 
 **How a recording is played** (the top of `desktop/replay.cpp` has the details): each recorded
 reading is served where the firmware reads the sensor, at its recorded time, and the firmware's own
-scan reads each pad when it reaches it, as on the instrument. The 8 reads of a new touch's velocity
-measurement are served one per read. Where the capture dropped records, a touched pad holds its
-last reading, and a touch whose end was dropped ends one scan period after its last reading.
+scan reads each pad when it reaches it, as on the instrument. The firmware sees exactly the recorded
+raw pressure. The 8 reads of a new touch's velocity measurement are served one per read. Where the
+capture dropped records, a touched pad holds its last reading; where the drop flags show it lost a
+touch's end, the touch ends one scan period after its last reading, and those reads are marked
+`cut`. Untouched pads read what their logged neighbours recorded for them, since the firmware adds
+a neighbour's pressure to a note's.
 
-**Scripted events** add what recordings lack, at times in ms on the recording's clock (the CSV's
-`time_us` / 1000), one per line:
+**Scripted events**, one per line, add what recordings lack. `setting` lines are starting settings,
+stored before the firmware boots; the others happen at a time in ms on the recording's clock (the
+CSV's `time_us` / 1000):
 
 ```
-45200   switch 2 150         # control switch in row 2, pressed for 150 ms
-105500  pedal right down     # footswitch: left or right, down or up
-127000  set importing 1      # a named setting that can change while running (desktop/harness.h)
-127100  nrpn 230 2           # an NRPN the instrument receives: PARAM VALUE [CHANNEL]
-132000  midi B0 63 01 B0 62 66 B0 06 00 B0 26 12   # MIDI bytes the instrument receives
+setting footLeft sustain           # a switch's assignment, or any setting of desktop/harness.h
+45200   press switch2              # footLeft, footRight, footBoth, switch1 or switch2
+45350   release switch2
+132000  nrpn 299 259               # an NRPN the instrument receives: PARAM VALUE [CHANNEL]
+132100  midi B0 63 02 B0 62 2B     # MIDI bytes the instrument receives
+132200  set importing 0            # a setting that can change while running
 ```
-
-microLinn acts on received NRPNs (other than the 299 query) only while its importing is on, which
-`set importing 1` does as the IMP switch on its settings screen would.
 
 **Logs**, in `build/fw/<label>/replay/<configuration>/<run>/`, with times in microseconds on the
 recording's clock:
 - `midi.txt`: each message the firmware sends, when it wrote it, its bytes and what it is. This is
   what the comparison looks at.
-- `touches.txt`: each scan of a touched pad: the recorded reading served (its time and raw
-  pressure) and how, the firmware's `currentRawZ` and `pressureZ`, the touch state, note and
+- `touches.txt`: each scan of a touched pad: the recorded reading served (its time and raw pressure),
+  how it was served (`scan`, `burst`, `held`, `cut`, `stop`, `nbr`), whether the capture lost records
+  just before it (`gap`), the firmware's `currentRawZ` and `pressureZ`, the touch state, note and
   channel. With an EDO set, the note is microLinn's edostep, not the MIDI note.
-- `run.txt`: the run's summary, including how much of the recording was served.
+- `run.txt`: the run's summary: how much of the recording was served, the touch ends the model
+  added and the notes they ended, the settings checked after boot.
+- `settings.txt`, `provision.txt` and `flash.bin`: the run's settings once all were set, how they were
+  provisioned, and the flash image the run booted from.
 
-Results are cached under a key of everything that goes into them (the firmware, these tools, the
-recordings, events and settings), so only what changed is run again; `--fresh` ignores the cache.
-`--repeat` builds, provisions and replays everything a second time and checks that the flash images
-and all the logs are identical. `--save DIR` copies the logs to DIR, gzipped, with `SHA256SUMS` of
-the uncompressed files; `--baseline DIR` then compares with them instead of building BASE.
+**Checks:**
+- Results are cached under a key of everything that goes into them (the firmware, these tools, the
+  recordings, events, configurations and settings export), so only what changed is run again;
+  `--fresh` ignores the cache.
+- `--repeat` builds, provisions and replays everything a second time and checks that the flash images
+  and all the files are identical.
+- `--sanitize` builds the firmware with AddressSanitizer and repeats every run with it: it fails on
+  any memory error, and on logs that differ from the normal build's, which would mean the firmware's
+  behaviour depends on where its variables are. Memory errors already known in the firmware are
+  contained in every desktop build, as `fwlib/memfix.py` lists.
+- `--save DIR` copies the logs to DIR, gzipped, with `SHA256SUMS` of the uncompressed files;
+  `--baseline DIR` then compares with them instead of building BASE.
 
 ## Files
 
@@ -201,13 +212,15 @@ the uncompressed files; `--baseline DIR` then compares with them instead of buil
 | `fwlib/warnings.py` | Parsing and comparing warnings, by location in the sketch rather than line number |
 | `fwlib/stack.py` | Static stack analysis of the linked `.elf`; its assumptions (guarded tasks, excluded calls, annotated indirect calls) are listed at the top |
 | `fwlib/longfix.py` | The source rewrites of the desktop build: `long` made 32-bit, and the clock reads of the firmware's busy-waits |
+| `fwlib/memfix.py` | The memory errors known in the firmware, contained in the desktop build so that its behaviour doesn't depend on where variables are |
 | `fwlib/layout.py` | Struct layout comparison from the DWARF debug info of both builds |
 | `fwlib/desktop.py` | The desktop build and its two-run boot |
-| `fwlib/replay.py` | Replays: the configurations, provisioning, running, caching and comparing |
+| `fwlib/replay.py` | Replays: reading the configurations, provisioning, running, caching, comparing and the checks |
 | `desktop/hal.h`, `desktop/hal.cpp` | The hardware model: clock, sensor, LEDs, UART, pins, flash |
 | `desktop/include/` | Stand-ins for the Arduino core, SPI and DueFlashStorage headers |
 | `desktop/sketch_prelude.h`, `desktop/sketch_tail.h` | Wrapped around the sketch in the desktop build |
-| `desktop/harness.h` | What the harnesses share: MIDI messages from the UART's bytes, provisioning, named settings |
+| `desktop/harness.h` | What the harnesses share: MIDI messages from the UART's bytes, named settings, provisioning (an export restored as the updater does, or the firmware's defaults with an export's calibration) |
 | `desktop/smoke.cpp` | The default harness |
 | `desktop/replay.cpp` | The replay harness: the recordings' sensor model, scripted events, the logs |
-| `replay/NAME.events` | The scripted events played with recording NAME |
+| `replay/configurations.txt` | The replay's test configurations, documented |
+| `replay/NAME.events` | The scripted events played with recording NAME, with the starting settings they need |

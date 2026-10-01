@@ -12,7 +12,7 @@
                                [--seconds S] [--midi-log FILE]] [--harness FILE]
   python3 tools/fw.py layout   [--ref REF]        struct layouts: desktop build vs instrument build
   python3 tools/fw.py replay   [--ref REF] [--against BASE | --baseline DIR | --no-compare] --recordings DIR
-                               [--config NAME]... [--recording NAME]... [--repeat] [--save DIR]
+                               [--config NAME]... [--recording NAME]... [--repeat] [--sanitize] [--save DIR]
                                                   replay sensor recordings through the firmware, compare MIDI
 
 Without --ref, commands work on the working tree, uncommitted changes included. BASE defaults to
@@ -320,6 +320,7 @@ def cmd_desktop(args):
     log('  32-bit long rewrites: %s' % ', '.join('%s %s' % (f, c) for f, c in changed.items()))
     log('  busy-waits whose clock reads take one pass each: %s'
         % ', '.join('%s (%d reads)' % (f, n) for f, n in result['busy_waits'].items()))
+    log('  known firmware memory errors contained (fwlib/memfix.py): %s' % ', '.join(result['contained']))
     if args.run:
         provision, run = desktop.boot_and_run(result['exe'], out, settings=args.settings, seconds=args.seconds,
                                               midi_log=os.path.abspath(args.midi_log) if args.midi_log else None,
@@ -362,13 +363,14 @@ def cmd_layout(args):
 def cmd_replay(args):
     tc = arduino.Toolchain(args.toolchain).check()
     recordings = replay.find_recordings(args.recordings, args.recording)
-    settings = args.settings or os.path.join(args.recordings, 'linnstrument_settings.bin')
-    plan = replay.Plan(recordings, settings, configs=args.config, events_dir=os.path.abspath(args.events_dir),
+    calibration_from = args.calibration_from or os.path.join(args.recordings, 'linnstrument_settings.bin')
+    plan = replay.Plan(recordings, calibration_from, configs=args.config, events_dir=os.path.abspath(args.events_dir),
                        timing=args.timing)
     target = sketch.Target(REPO, args.ref)
-    log('recordings: %s (%s)' % (os.path.abspath(args.recordings), ', '.join(r.name for r in recordings)))
-    log('settings export: %s, with the recordings\' sensor settings: %s'
-        % (plan.settings_export, ', '.join('%s %d' % s for s in plan.sensor)))
+    log('recordings: %s (%s), with their sensor settings: %s'
+        % (os.path.abspath(args.recordings), ', '.join(r.name for r in recordings), ', '.join('%s %s' % s for s in plan.sensor)))
+    log('configurations: %s (%s)' % (os.path.relpath(plan.configurations_file), ', '.join(c.name for c in plan.configs)))
+    log('calibration from: %s' % plan.calibration_from)
     log('scripted events: %s' % (', '.join(os.path.relpath(plan.events_file(r)) for r in recordings
                                            if plan.events_file(r)) or 'none'))
     fresh = args.fresh or args.repeat
@@ -377,38 +379,43 @@ def cmd_replay(args):
     compared = None
     if args.baseline:
         compared = 'the logs saved in %s' % args.baseline
-        base_logs = {(r.config[0], r.name): os.path.join(args.baseline, r.config[0], r.name, 'midi.txt') for r in results}
+        base_logs = {(r.config.name, r.name): os.path.join(args.baseline, r.config.name, r.name, 'midi.txt') for r in results}
     elif not args.no_compare:
         base = base_target(args)
         compared = base.describe()
         base_results = replay.replay(tc, base, plan, jobs=args.jobs, log=log, fresh=args.fresh)
-        base_logs = {(r.config[0], r.name): r.midi for r in base_results}
+        base_logs = {(r.config.name, r.name): r.midi for r in base_results}
 
     log('')
     log('replayed: %s' % target.describe())
     if compared:
         log('compared with: %s (midi.txt, byte for byte)' % compared)
     log('')
-    log('%-13s %-14s %6s %9s %8s  %s' % ('configuration', 'run', 'notes', 'messages', 'served', 'midi.txt' if compared else ''))
-    reports, different = [], 0
+    log('%-18s %-14s %6s %9s %8s  %s' % ('configuration', 'run', 'notes', 'messages', 'served', 'midi.txt' if compared else ''))
+    reports, different, overflows = [], 0, 0
     for r in results:
-        notes, messages, served = r.summary_values()
+        notes, messages, served, overflow = r.summary_values()
+        overflows += overflow
         verdict = ''
         if compared:
-            diff = replay.compare_files(base_logs[(r.config[0], r.name)], r.midi)
+            diff = replay.compare_files(base_logs[(r.config.name, r.name)], r.midi)
             if diff is None:
                 verdict = 'identical'
             else:
                 different += 1
                 verdict = 'DIFFERENT from line %d' % diff[0]
-                reports.append(['%s, %s:' % (r.config[0], r.name)] + diff[1])
-        log('%-13s %-14s %6d %9d %8s  %s' % (r.config[0], r.name, notes, messages, served, verdict))
+                reports.append(['%s, %s:' % (r.config.name, r.name)] + diff[1])
+        log('%-18s %-14s %6d %9d %8s  %s%s' % (r.config.name, r.name, notes, messages, served, verdict,
+                                               '  (hammer-on list overflow, contained)' if overflow else ''))
     for report in reports:
         log('')
         for line in report:
             log(line)
     log('')
     log('logs: %s/<configuration>/<run>/' % os.path.relpath(os.path.join(target.work_dir(), 'replay')))
+    if overflows:
+        log('%d runs overflow microLinn\'s hammer-on list, a firmware bug; the desktop build contains it '
+            '(tools/fwlib/memfix.py)' % overflows)
     failed = []
     if compared:
         log('midi.txt: %s' % ('identical in all %d runs' % len(results) if not different else
@@ -422,26 +429,39 @@ def cmd_replay(args):
         for name, what in bad:
             log('NOT REPEATABLE: %s: %s differs' % (name, what))
         log('second build, provisioning and replay: %s' % (
-            'identical flash images and logs (midi.txt, touches.txt, run.txt) in all %d checks' % len(checks)
-            if not bad else '%d of %d checks differ' % (len(bad), len(checks))))
+            'identical flash images and files (settings.txt, provision.txt, midi.txt, touches.txt, run.txt) in all %d runs' % len(checks)
+            if not bad else '%d of %d runs differ' % (len(bad), len(checks))))
         if bad:
             failed.append('a second replay differs')
 
+    if args.sanitize:
+        checks = replay.sanitize_check(tc, target, plan, results, jobs=args.jobs, log=log)
+        bad = [(name, what) for name, what in checks if what]
+        for name, what in bad:
+            log('SANITIZER: %s: %s' % (name, what))
+        log('AddressSanitizer build: %s' % (
+            'no memory error, and midi.txt and touches.txt identical to the normal build\'s in all %d runs' % len(checks)
+            if not bad else '%d of %d runs failed (their logs are in %s)'
+            % (len(bad), len(checks), os.path.relpath(os.path.join(target.work_dir(), 'replay', 'sanitize')))))
+        if bad:
+            failed.append('the sanitizer check failed')
+
     if args.save:
         head = sketch.git(REPO, 'rev-parse', 'HEAD')
-        description = ('Replay logs of %s (HEAD %s), made by tools/fw.py replay.\n'
-                       'recordings: %s\nsettings export: %s\nsensor settings: %s\nconfigurations: %s\n'
+        description = ('Replay logs of %s, made by tools/fw.py replay with the tools at HEAD %s.\n'
+                       'recordings: %s, with their sensor settings: %s\n'
+                       'calibration from: %s\nconfigurations (%s):\n%s\n'
                        'midi.txt and touches.txt are gzipped; SHA256SUMS lists them uncompressed.\n'
-                       % (target.describe(), head, ', '.join(r.name for r in recordings), os.path.basename(plan.settings_export),
-                          ', '.join('%s %d' % s for s in plan.sensor),
-                          '; '.join('%s: %s' % (c[0], c[3]) for c in plan.configs)))
+                       % (target.describe(), head, ', '.join(r.name for r in recordings),
+                          ', '.join('%s %s' % s for s in plan.sensor), os.path.basename(plan.calibration_from),
+                          os.path.relpath(plan.configurations_file, REPO),
+                          '\n'.join('  %s: %s' % (c.name, c.description) for c in plan.configs)))
         replay.save(results, args.save, description, log=log)
 
     if failed:
         log('FAILED: %s' % '; '.join(failed))
         return 1
     return 0
-
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -499,15 +519,18 @@ def main():
     s.add_argument('--recordings', default=os.environ.get('LINNSTRUMENT_RECORDINGS'),
                    help='folder with the recordings (NAME_samples.csv, NAME_settings.csv) and, by default, the '
                         'settings export (default: $LINNSTRUMENT_RECORDINGS)')
-    s.add_argument('--settings', help='settings export to provision with (default: RECORDINGS/linnstrument_settings.bin)')
+    s.add_argument('--calibration-from', help='settings export the runs take their calibration from, and nothing '
+                                              'else (default: RECORDINGS/linnstrument_settings.bin)')
     s.add_argument('--recording', action='append', help='replay only this recording (repeatable)')
-    s.add_argument('--config', action='append', help='replay only this configuration (repeatable): %s'
-                   % ', '.join(replay.CONFIG_NAMES))
+    s.add_argument('--config', action='append', help='replay only this configuration (repeatable; see '
+                                                     'tools/replay/configurations.txt)')
     s.add_argument('--events-dir', default=replay.EVENTS_DIR,
                    help='folder with the scripted events, NAME.events (default: tools/replay)')
     s.add_argument('--timing', help='the clock model\'s costs, ADC_NS,PASS_NS (see desktop/hal.h)')
     s.add_argument('--repeat', action='store_true',
                    help='build, provision and replay everything a second time and check it is identical')
+    s.add_argument('--sanitize', action='store_true',
+                   help='also run everything with AddressSanitizer: no memory error, and the same logs')
     s.add_argument('--save', help='copy the logs to this folder, gzipped, with SHA256SUMS')
     s.add_argument('--fresh', action='store_true', help='ignore cached results')
     s.add_argument('--jobs', type=int, help='runs in parallel (default: the number of CPUs)')

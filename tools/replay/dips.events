@@ -1,20 +1,22 @@
 # Scripted events for the "dips" recording (dips on single notes, then on chords), in ms on the
-# recording's clock. With the settings export's switch assignments (Switch 2 and the right footswitch
-# Transpose Up, the left footswitch Transpose Down), the first part transposes while notes are held,
-# and returns to no transposition. The second part makes the left footswitch a sustain pedal through
-# microLinn's NRPN importing, holds it across the chord dips, and puts things back.
+# recording's clock. The first part transposes while notes are held, then returns to no transposition.
+# The second holds Switch 1, assigned to Sustain, across the chord dips, and the last line queries a
+# setting by NRPN.
 
-48500   switch 2 150         # Switch 2: Transpose Up, a note held (47.85-54.6 s)
-82000   pedal right down     # Transpose Up, a note held (81.15-86 s)
-82300   pedal right up
-130500  pedal left down      # Transpose Down, twice: back to no transposition (a note held, 129.65-136.6 s)
-130800  pedal left up
-131500  pedal left down
-131800  pedal left up
+setting footRight transposeUp          # the switches these events use; the others keep their defaults
+setting footLeft transposeDown
+setting switch1 sustain
 
-200000  set importing 1
-200100  nrpn 230 2           # Global Foot Left Assignment: Sustain
-206000  pedal left down      # three or more notes held (205.25-209.1 s)
-216000  pedal left up        # three or more notes held (214.35-218 s)
-219000  midi B0 63 01 B0 62 66 B0 06 00 B0 26 12   # NRPN 230 = 18: the left footswitch back to Transpose Down
-219100  set importing 0
+48500   press footRight                # Transpose Up, a note held (47.85-54.6 s)
+48700   release footRight
+82000   press footRight                # Transpose Up again, a note held (81.15-86 s)
+82300   release footRight
+130500  press footLeft                 # Transpose Down, twice: back to no transposition (a note held, 129.65-136.6 s)
+130800  release footLeft
+131500  press footLeft
+131800  release footLeft
+
+206000  press switch1                  # Switch 1 held as a sustain pedal: down with three or more notes held (205.25-209.1 s)
+216000  release switch1                # up with three or more notes held (214.35-218 s)
+
+219000  nrpn 299 261                   # query: Global MIDI CC For Switch 1 Sustain

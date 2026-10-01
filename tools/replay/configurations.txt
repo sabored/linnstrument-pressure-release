@@ -1,0 +1,36 @@
+# The test configurations of tools/fw.py replay.
+#
+# These are test settings, chosen on purpose; none of them is taken from an instrument's settings.
+# Each configuration starts from the firmware's own defaults, as a first boot on erased flash leaves
+# them, and takes from the settings export only its calibration. Then, in this order:
+#   1. the `base` settings below;
+#   2. the recording's own sensor settings, from NAME_settings.csv: sensorSensitivityZ, sensorLoZ,
+#      sensorFeatherZ, sensorRangeZ, pressureSensitivity, velocitySensitivity, pressureAftertouch;
+#   3. the configuration's own settings;
+#   4. the starting settings (`setting` lines) of the run's events file, for runs with events.
+# All of them are stored before the firmware boots, and each run checks after boot that every one of
+# them is in effect. Names and values are those of SETTINGS in tools/desktop/harness.h; per-split
+# settings apply to the left split, which covers the whole surface since the split is off.
+#
+# Everything else keeps the firmware's defaults. For instance the switches keep their default
+# assignments (left footswitch arpeggiator, right footswitch sustain, Switch 1 sustain, Switch 2
+# arpeggiator, both footswitches disabled) unless an events file assigns them.
+#
+# Format: `base SETTING=VALUE...`, and `config NAME [calibration=other] [recordings=NAME,...]
+# [SETTING=VALUE...]`. `recordings` limits a configuration to some recordings, where the others would
+# only repeat the main configuration's runs. A comment at the end of a config line is its description.
+
+base    mpe=15                          # channel per note with the firmware's MPE setup (main channel 1,
+                                        # bend range 48, Y as CC 74, Z as channel pressure), 15 note channels: 2-16
+base    rowOffset=5 colOffset=2 edo=12  # Wicki-Hayden: +5 per row, +2 per column, microLinn's 12-EDO
+
+config  wicki-hayden                                                  # the main configuration: the base as it is
+config  col1                colOffset=1                               # one semitone per column
+config  no-edo              edo=off                                   # microLinn's EDO off
+config  no-edo-col1         edo=off colOffset=1                       # EDO off, one semitone per column
+config  one-channel         midiMode=oneChannel                       # One Channel, on channel 1
+config  hammer-ons          recordings=lifts,play hammerOnMode=R hammerOnZone=20 hammerOnWait=0   # microLinn's hammer-ons: R (highest note wins), zone 200 cents (a neighbouring pad), no wait; not dips, where no note starts next to a note held in its row
+config  other-calibration   calibration=other                         # the opposite of the export's calibration state: cleared if it has one, else its data marked valid
+config  fixed-low           velocitySensitivity=fixed pressureSensitivity=low      # fixed velocity, low pressure sensitivity
+config  fixed-medium        velocitySensitivity=fixed pressureSensitivity=medium   # fixed velocity, medium pressure sensitivity
+config  fixed-high          velocitySensitivity=fixed pressureSensitivity=high     # fixed velocity, high pressure sensitivity
