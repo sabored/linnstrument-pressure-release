@@ -1,0 +1,22 @@
+# Scripted events for the "play" recording (natural playing: chords, slides, glissandos), in ms on the
+# recording's clock. With the settings export's switch assignments (Switch 2 and the right footswitch
+# Transpose Up, the left footswitch Transpose Down), the first part transposes while chords are held,
+# and returns to no transposition. The second part makes the left footswitch a sustain pedal through
+# microLinn's NRPN importing, presses it twice while chords are held, and puts things back.
+
+86000   switch 2 150         # Switch 2: Transpose Up, three or more notes held (85.2-90.25 s)
+97500   pedal right down     # Transpose Up, four or more notes held (96.75-99.85 s)
+97800   pedal right up
+215500  pedal left down      # Transpose Down, twice: back to no transposition (three or more notes held, 214.9-223.6 s)
+215800  pedal left up
+216500  pedal left down
+216800  pedal left up
+
+360000  set importing 1
+360100  nrpn 230 2           # Global Foot Left Assignment: Sustain
+363500  pedal left down      # four or more notes held (362.75-375.4 s)
+374000  pedal left up
+391000  pedal left down      # three or more notes held (390.65-394.6 s), released while four are held (399.7-401.75 s)
+400500  pedal left up
+402000  midi B0 63 01 B0 62 66 B0 06 00 B0 26 12   # NRPN 230 = 18: the left footswitch back to Transpose Down
+402100  set importing 0

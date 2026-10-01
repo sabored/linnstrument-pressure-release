@@ -11,6 +11,9 @@
   python3 tools/fw.py desktop  [--ref REF] [--run [--settings EXPORT] [--calibration as-exported|stand-in]
                                [--seconds S] [--midi-log FILE]] [--harness FILE]
   python3 tools/fw.py layout   [--ref REF]        struct layouts: desktop build vs instrument build
+  python3 tools/fw.py replay   [--ref REF] [--against BASE | --baseline DIR | --no-compare] --recordings DIR
+                               [--config NAME]... [--recording NAME]... [--repeat] [--save DIR]
+                                                  replay sensor recordings through the firmware, compare MIDI
 
 Without --ref, commands work on the working tree, uncommitted changes included. BASE defaults to
 the merge-base of HEAD with fork/main, which is the build the current branch started from.
@@ -24,7 +27,7 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fwlib import arduino, desktop, layout, sketch, stack, warnings  # noqa: E402
+from fwlib import arduino, desktop, layout, replay, sketch, stack, warnings  # noqa: E402
 
 REPO = sketch.repo_root(os.path.dirname(os.path.abspath(__file__)))
 STACK_BUILD_PREFS = ('compiler.cpp.extra_flags=-fstack-usage', 'compiler.c.extra_flags=-fstack-usage')
@@ -356,6 +359,90 @@ def cmd_layout(args):
     return 1 if r['differ'] or r['missing'] else 0
 
 
+def cmd_replay(args):
+    tc = arduino.Toolchain(args.toolchain).check()
+    recordings = replay.find_recordings(args.recordings, args.recording)
+    settings = args.settings or os.path.join(args.recordings, 'linnstrument_settings.bin')
+    plan = replay.Plan(recordings, settings, configs=args.config, events_dir=os.path.abspath(args.events_dir),
+                       timing=args.timing)
+    target = sketch.Target(REPO, args.ref)
+    log('recordings: %s (%s)' % (os.path.abspath(args.recordings), ', '.join(r.name for r in recordings)))
+    log('settings export: %s, with the recordings\' sensor settings: %s'
+        % (plan.settings_export, ', '.join('%s %d' % s for s in plan.sensor)))
+    log('scripted events: %s' % (', '.join(os.path.relpath(plan.events_file(r)) for r in recordings
+                                           if plan.events_file(r)) or 'none'))
+    fresh = args.fresh or args.repeat
+    results = replay.replay(tc, target, plan, jobs=args.jobs, log=log, fresh=fresh)
+
+    compared = None
+    if args.baseline:
+        compared = 'the logs saved in %s' % args.baseline
+        base_logs = {(r.config[0], r.name): os.path.join(args.baseline, r.config[0], r.name, 'midi.txt') for r in results}
+    elif not args.no_compare:
+        base = base_target(args)
+        compared = base.describe()
+        base_results = replay.replay(tc, base, plan, jobs=args.jobs, log=log, fresh=args.fresh)
+        base_logs = {(r.config[0], r.name): r.midi for r in base_results}
+
+    log('')
+    log('replayed: %s' % target.describe())
+    if compared:
+        log('compared with: %s (midi.txt, byte for byte)' % compared)
+    log('')
+    log('%-13s %-14s %6s %9s %8s  %s' % ('configuration', 'run', 'notes', 'messages', 'served', 'midi.txt' if compared else ''))
+    reports, different = [], 0
+    for r in results:
+        notes, messages, served = r.summary_values()
+        verdict = ''
+        if compared:
+            diff = replay.compare_files(base_logs[(r.config[0], r.name)], r.midi)
+            if diff is None:
+                verdict = 'identical'
+            else:
+                different += 1
+                verdict = 'DIFFERENT from line %d' % diff[0]
+                reports.append(['%s, %s:' % (r.config[0], r.name)] + diff[1])
+        log('%-13s %-14s %6d %9d %8s  %s' % (r.config[0], r.name, notes, messages, served, verdict))
+    for report in reports:
+        log('')
+        for line in report:
+            log(line)
+    log('')
+    log('logs: %s/<configuration>/<run>/' % os.path.relpath(os.path.join(target.work_dir(), 'replay')))
+    failed = []
+    if compared:
+        log('midi.txt: %s' % ('identical in all %d runs' % len(results) if not different else
+                              '%d of %d runs differ' % (different, len(results))))
+        if different:
+            failed.append('the MIDI differs')
+
+    if args.repeat:
+        checks = replay.repeat_check(tc, target, plan, results, jobs=args.jobs, log=log)
+        bad = [(name, what) for name, what in checks if what]
+        for name, what in bad:
+            log('NOT REPEATABLE: %s: %s differs' % (name, what))
+        log('second build, provisioning and replay: %s' % (
+            'identical flash images and logs (midi.txt, touches.txt, run.txt) in all %d checks' % len(checks)
+            if not bad else '%d of %d checks differ' % (len(bad), len(checks))))
+        if bad:
+            failed.append('a second replay differs')
+
+    if args.save:
+        head = sketch.git(REPO, 'rev-parse', 'HEAD')
+        description = ('Replay logs of %s (HEAD %s), made by tools/fw.py replay.\n'
+                       'recordings: %s\nsettings export: %s\nsensor settings: %s\nconfigurations: %s\n'
+                       'midi.txt and touches.txt are gzipped; SHA256SUMS lists them uncompressed.\n'
+                       % (target.describe(), head, ', '.join(r.name for r in recordings), os.path.basename(plan.settings_export),
+                          ', '.join('%s %d' % s for s in plan.sensor),
+                          '; '.join('%s: %s' % (c[0], c[3]) for c in plan.configs)))
+        replay.save(results, args.save, description, log=log)
+
+    if failed:
+        log('FAILED: %s' % '; '.join(failed))
+        return 1
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--toolchain', default=arduino.default_toolchain_dir(REPO),
@@ -403,6 +490,28 @@ def main():
     s.add_argument('--ref')
     s.add_argument('-v', '--verbose', action='store_true')
     s.set_defaults(func=cmd_layout)
+
+    s = sub.add_parser('replay', help='replay sensor recordings through the firmware and compare the MIDI')
+    s.add_argument('--ref', help='the firmware to replay (default: the working tree)')
+    s.add_argument('--against', help='compare with this firmware (default: merge-base of HEAD with fork/main)')
+    s.add_argument('--baseline', help='compare with the logs saved in this folder (--save) instead')
+    s.add_argument('--no-compare', action='store_true', help='just replay')
+    s.add_argument('--recordings', default=os.environ.get('LINNSTRUMENT_RECORDINGS'),
+                   help='folder with the recordings (NAME_samples.csv, NAME_settings.csv) and, by default, the '
+                        'settings export (default: $LINNSTRUMENT_RECORDINGS)')
+    s.add_argument('--settings', help='settings export to provision with (default: RECORDINGS/linnstrument_settings.bin)')
+    s.add_argument('--recording', action='append', help='replay only this recording (repeatable)')
+    s.add_argument('--config', action='append', help='replay only this configuration (repeatable): %s'
+                   % ', '.join(replay.CONFIG_NAMES))
+    s.add_argument('--events-dir', default=replay.EVENTS_DIR,
+                   help='folder with the scripted events, NAME.events (default: tools/replay)')
+    s.add_argument('--timing', help='the clock model\'s costs, ADC_NS,PASS_NS (see desktop/hal.h)')
+    s.add_argument('--repeat', action='store_true',
+                   help='build, provision and replay everything a second time and check it is identical')
+    s.add_argument('--save', help='copy the logs to this folder, gzipped, with SHA256SUMS')
+    s.add_argument('--fresh', action='store_true', help='ignore cached results')
+    s.add_argument('--jobs', type=int, help='runs in parallel (default: the number of CPUs)')
+    s.set_defaults(func=cmd_replay)
 
     args = p.parse_args()
     try:

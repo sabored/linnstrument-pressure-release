@@ -162,7 +162,10 @@ static struct PowerOn {
 static uint8_t g_sensorLsb = 0;
 static uint8_t g_selCol = 0, g_selRow = 0;
 static SensorAxis g_selAxis = SENSOR_Z;
+static uint64_t g_selection = 0;
 static uint8_t g_adcLsb = 0;
+
+uint64_t sensorSelection() { return g_selection; }
 
 static uint8_t spiTransfer(uint8_t pin, uint8_t data, SPITransferMode mode) {
   if (pin == PIN_SPI_SENSOR) {
@@ -177,6 +180,7 @@ static uint8_t spiTransfer(uint8_t pin, uint8_t data, SPITransferMode mode) {
       if (data & 0x40) g_selAxis = SENSOR_Y;
       else if (g_sensorLsb & 0x40) g_selAxis = SENSOR_X;
       else g_selAxis = SENSOR_Z;
+      ++g_selection;
     }
     return 0;
   }

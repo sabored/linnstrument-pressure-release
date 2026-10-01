@@ -47,6 +47,10 @@ enum SensorAxis { SENSOR_X = 0, SENSOR_Y = 1, SENSOR_Z = 2 };
 typedef uint16_t (*SensorModel)(uint8_t col, uint8_t row, SensorAxis axis, uint64_t tNs, void* user);
 void setSensorModel(SensorModel model, void* user);
 uint16_t untouchedSurface(uint8_t col, uint8_t row, SensorAxis axis, uint64_t tNs, void* user);
+// Counts the firmware's cell and axis selections. The ADC reads that follow one selection share its
+// number, so a sensor model can tell a second read within one selection (readZ()'s settling read)
+// from a new read of the same cell.
+uint64_t sensorSelection();
 
 // ---- UART
 // One UART carries MIDI (DIN at 31250 baud, USB at 115200 through the USB-MIDI chip) and serial mode.
