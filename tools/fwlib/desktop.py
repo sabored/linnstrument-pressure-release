@@ -69,7 +69,8 @@ SANITIZE_FLAGS = ['-fsanitize=address', '-fno-omit-frame-pointer']
 
 def build(tc, sketch_dir, out_dir, harness=DEFAULT_HARNESS, log=print, sanitize=False):
     """Builds the desktop executable (with AddressSanitizer if sanitize). Returns {'exe', 'sketch_object',
-    'rewrites', 'busy_waits', 'contained', 'src_dir'}."""
+    'rewrites', 'busy_waits', 'contained', 'not_contained', 'src_dir'}; out_dir/contained.txt lists the
+    memory errors contained in this build, one per line."""
     src = os.path.join(out_dir, 'src')
     gen = os.path.join(out_dir, 'generated')
     for d in (src, gen):
@@ -86,7 +87,7 @@ def build(tc, sketch_dir, out_dir, harness=DEFAULT_HARNESS, log=print, sanitize=
             f.write(text)
     text, counts = longfix.rewrite(open(combined, encoding='utf-8', errors='surrogateescape').read())
     text, busy = longfix.mark_busy_waits(text)
-    text, contained = memfix.contain(text)
+    text, contained, not_contained = memfix.contain(text)
     rewrites['linnstrument-firmware.ino.cpp'] = counts
     unit = ('#include "sketch_prelude.h"\n' + text +
             '\n#line 1 "sketch_tail.h"\n#include "sketch_tail.h"\n#line 1 "%s"\n#include "%s"\n' % (harness, harness))
@@ -107,7 +108,10 @@ def build(tc, sketch_dir, out_dir, harness=DEFAULT_HARNESS, log=print, sanitize=
     _run([cxx] + CXXFLAGS + extra + ['-Wall', '-Wextra'] + includes + ['-c', os.path.join(DESKTOP_DIR, 'hal.cpp'), '-o', hal_o],
          'desktop compile of hal.cpp')
     _run([cxx] + extra + [sketch_o, hal_o, '-o', exe], 'desktop link')
+    with open(os.path.join(out_dir, 'contained.txt'), 'w') as f:
+        f.write(''.join('%s\n' % c for c in contained))
     return {'exe': exe, 'sketch_object': sketch_o, 'rewrites': rewrites, 'busy_waits': busy, 'contained': contained,
+            'not_contained': not_contained,
             'src_dir': src}
 
 

@@ -34,19 +34,25 @@
 //   from its first sample, even if that read comes after the burst's recorded time.
 // - X and Y: the touch's latest recorded reading, or its first one if the finger hasn't been read yet.
 // - Gaps: where the capture dropped records of a touched pad, the pad holds its last reading.
-// - Touch ends the capture lost: a touched pad whose next sample starts a new touch (flagged, or a
-//   velocity burst) had to end in between. If the capture's drop flags show records were lost in
-//   between, the model ends the touch one scan period after its last sample (at most halfway to the
-//   next touch): the earliest it can have ended. These reads are marked `cut`. Without lost records
-//   the samples are taken as they are: a pad in the firmware's transfer state (part of a slide) starts
-//   a velocity burst without the new-touch flag. A pad still touched at its last sample ends the same
-//   way if records were lost after it (`cut`), and otherwise one scan period after the recording's last
-//   sample (`stop`: the recording stopped with the pad touched).
+// - Touch ends the capture lost. The capture's drop flag (drops_before) says that some record, of any
+//   pad, was lost before the record that carries it; whether this pad lost one takes more:
+//   - a touched pad whose next sample is flagged as a new touch was untouched just before it, so it
+//     ended in between: if records were lost in between, its end's record is among them;
+//   - a touched pad whose next sample starts a velocity burst without that flag may simply have been
+//     in the firmware's transfer state (part of a slide), which starts a new touch without the flag. It
+//     can only have ended in between if it also missed a scan: if another pad was logged twice, in
+//     different scans, between the two samples;
+//   - a pad still touched at its last sample: its end was lost if records were lost after it and it
+//     missed a scan; otherwise the recording stopped with the pad touched.
+//   Where the end was lost, the model ends the touch one scan period after its last sample (at most
+//   halfway to the next touch): the earliest it can have ended. These reads are marked `cut`. A pad
+//   touched when the recording stopped ends one scan period after the recording's last sample,
+//   marked `stop`. Everything else is taken as recorded.
 // - Untouched pads: a pad with no recorded scan around t (before its first sample, or after the last
 //   recorded scan that follows a release or a rejection) is served what its logged neighbours recorded
 //   for it (nz_*: 0, or the middle of the 16-step), at most one and a half scan periods old, and kept
-//   below the recording's continuation threshold, so that it never touches or releases anything; with
-//   no such record, it reads untouched (raw 0). The firmware adds an untouched neighbour's raw pressure
+//   below the recording's continuation threshold (the ADC value is rounded so the firmware never reads
+//   more), so that it never touches or releases anything; with no such record, it reads untouched. The firmware adds an untouched neighbour's raw pressure
 //   to a note's pressure (handleZExpression()).
 // - Control switches (column 0) aren't in recordings; `press` events press them.
 //
@@ -124,7 +130,7 @@ static const uint64_t BURST_GAP_US = 2000; // reads of one burst are ~0.1 ms apa
 
 struct RecordingStats {
   uint64_t samples = 0, newTouches = 0, bursts = 0, noteStarts = 0, inexactZ = 0, gaps = 0;
-  uint64_t endsUntouched = 0, endsCut = 0, endsStop = 0, keptTransfers = 0, observations = 0;
+  uint64_t endsUntouched = 0, endsCut = 0, endsStop = 0, keptStarts = 0, observations = 0;
 } rec;
 
 static uint64_t toNs(uint64_t us) { return startNs + (us - firstUs) * 1000; }
@@ -200,6 +206,13 @@ static uint16_t adcForRawZ(int rawZ, int col, int row, bool count = true) {
   return (uint16_t)(4095 - r);
 }
 
+// The ADC value whose readZ() result is the highest not above rawZ
+static uint16_t adcAtMost(int rawZ, int col, int row) {
+  uint16_t adc = adcForRawZ(rawZ, col, row, false);
+  while (adc < 4095 && readZResult(adc, col, row) > rawZ) ++adc;     // a higher ADC value reads lower
+  return adc;
+}
+
 static Sample endSample(uint64_t us, SampleKind kind) {
   Sample u;
   u.us = us;
@@ -264,6 +277,8 @@ static void loadRecording(const std::string& prefix, uint64_t leadInNs) {
   std::vector<bool> xRead[MAXCOLS][MAXROWS], yRead[MAXCOLS][MAXROWS];
   std::vector<uint32_t> rowOf[MAXCOLS][MAXROWS];    // each sample's row in the recording
   std::vector<uint32_t> dropsUpTo(rows.size());     // rows up to and including this one flagged drops_before
+  std::vector<uint64_t> rowUs(rows.size());
+  std::vector<uint8_t> rowPad(rows.size());         // col * MAXROWS + row
   uint64_t prevUs = 0;
   uint32_t drops = 0;
   for (size_t ri = 0; ri < rows.size(); ++ri) {
@@ -278,6 +293,8 @@ static void loadRecording(const std::string& prefix, uint64_t leadInNs) {
     prevUs = us;
     if (r[cDrops] == "1") ++drops;
     dropsUpTo[ri] = drops;
+    rowUs[ri] = us;
+    rowPad[ri] = (uint8_t)(col * MAXROWS + row);
     Sample s;
     s.us = us;
     s.ns = toNs(us);
@@ -303,8 +320,12 @@ static void loadRecording(const std::string& prefix, uint64_t leadInNs) {
       int v = atoi(r[n[2]].c_str());
       Observation o;
       o.ns = s.ns;
-      o.rawZ = (uint16_t)(v == 0 ? 0 : std::min(v + 8, recordingFeatherZ - 1));
-      o.adcZ = adcForRawZ(o.rawZ, n[0], n[1], false);
+      o.adcZ = v == 0 ? 4095 : adcAtMost(std::min(v + 8, recordingFeatherZ - 1), n[0], n[1]);
+      o.rawZ = (uint16_t)readZResult(o.adcZ, n[0], n[1]);      // what the firmware will read
+      if (o.rawZ >= recordingFeatherZ) {
+        fprintf(stderr, "neighbour reading %d for pad %d,%d reaches the continuation threshold\n", o.rawZ, n[0], n[1]);
+        exit(1);
+      }
       pads[n[0]][n[1]].obs.push_back(o);
       ++rec.observations;
     }
@@ -324,6 +345,27 @@ static void loadRecording(const std::string& prefix, uint64_t leadInNs) {
   std::sort(gaps.begin(), gaps.end());
   scanPeriodUs = gaps.empty() ? 6560 : gaps[gaps.size() / 2];
   uint64_t gapUs = scanPeriodUs * 16 / 10;
+
+  // whether a whole scan passed between rows a and b (exclusive), shown by another pad logged twice in
+  // different scans; the pad of row a was read in that scan, and its record is missing
+  std::vector<uint64_t> seen(MAXCOLS * MAXROWS, 0);
+  auto missedScan = [&](uint32_t a, uint32_t b) {
+    std::vector<uint8_t> touched;
+    bool missed = false;
+    for (uint32_t r = a + 1; r < b && !missed; ++r) {
+      uint8_t q = rowPad[r];
+      if (q == rowPad[a]) continue;
+      if (seen[q] == 0) {
+        seen[q] = rowUs[r] + 1;
+        touched.push_back(q);
+      }
+      else if (rowUs[r] + 1 - seen[q] > BURST_GAP_US) {
+        missed = true;
+      }
+    }
+    for (uint8_t q : touched) seen[q] = 0;
+    return missed;
+  };
 
   for (int col = 0; col < MAXCOLS; ++col) {
     for (int row = 0; row < MAXROWS; ++row) {
@@ -386,21 +428,21 @@ static void loadRecording(const std::string& prefix, uint64_t leadInNs) {
           }
         }
         else if (last) {
-          // still touched at its last sample: its end was lost if the capture dropped records after it,
-          // otherwise the recording stopped with the pad touched
-          bool lost = dropsUpTo[lastRow] > dropsUpTo[ri[i]];
+          // still touched at its last sample (see "Touch ends the capture lost" above)
+          bool lost = dropsUpTo[lastRow] > dropsUpTo[ri[i]] && missedScan(ri[i], lastRow + 1);
           out.push_back(lost ? endSample(s[i].us + after, END_CUT) : endSample(lastUs + scanPeriodUs, END_STOP));
           if (lost) ++rec.endsCut;
           else ++rec.endsStop;
         }
         else if (s[i + 1].flags & (NEW_TOUCH | BURST_START)) {
-          // still touched, and the next sample starts a new touch
-          if (lostBetween(i, i + 1)) {
+          // still touched, and the next sample starts a new touch (see above)
+          bool lost = lostBetween(i, i + 1) && ((s[i + 1].flags & NEW_TOUCH) || missedScan(ri[i], ri[i + 1]));
+          if (lost) {
             out.push_back(endSample(s[i].us + after, END_CUT));
             ++rec.endsCut;
           }
           else {
-            ++rec.keptTransfers;
+            ++rec.keptStarts;
           }
         }
       }
@@ -958,9 +1000,9 @@ int main(int argc, char** argv) {
          "%llu samples after lost records or a gap\n", (unsigned long long)rec.samples, (unsigned long long)rec.newTouches,
          (unsigned long long)rec.bursts, (unsigned long long)rec.noteStarts, (unsigned long long)rec.gaps);
   printf("recording: touch ends added by the model: %llu cut (the capture lost the end), %llu stop (touched when "
-         "the recording stopped); %llu new touches from a touched pad with no records lost, kept as recorded; "
+         "the recording stopped); %llu new touches after a touched sample with no end lost, kept as recorded; "
          "%llu pads untouched after their last scan\n", (unsigned long long)rec.endsCut, (unsigned long long)rec.endsStop,
-         (unsigned long long)rec.keptTransfers, (unsigned long long)rec.endsUntouched);
+         (unsigned long long)rec.keptStarts, (unsigned long long)rec.endsUntouched);
   printf("recording: raw_z values with no exact ADC value: %llu; %llu neighbour readings\n",
          (unsigned long long)rec.inexactZ, (unsigned long long)rec.observations);
   printf("replay: %.3f s, %llu loop iterations, %llu surface scans", (endNs - startNs) / 1e9, (unsigned long long)loops,

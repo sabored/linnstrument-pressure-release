@@ -147,8 +147,8 @@ the defaults come the test configuration's settings, then the starting settings 
 events; all are stored before the firmware boots, and each run checks after boot that they're in
 effect. `replay/configurations.txt` defines and documents the configurations: a base (Wicki-Hayden
 in microLinn's 12-EDO, channel per note on channels 2-16, the recordings' own sensor settings) and
-the variations replayed on it (column offset 1, EDO off, One Channel, hammer-ons, the other
-calibration state, fixed velocity with each pressure sensitivity). `--config` and `--recording` pick
+the variations replayed on it (7 note channels, column offset 1, EDO off, One Channel, hammer-ons,
+the other calibration state, fixed velocity with each pressure sensitivity). `--config` and `--recording` pick
 some of them.
 
 **What a run is:** one configuration, one recording, and either no events or the recording's
@@ -158,10 +158,11 @@ scripted events (`replay/NAME.events`, if there is one; `--events-dir` chooses a
 reading is served where the firmware reads the sensor, at its recorded time, and the firmware's own
 scan reads each pad when it reaches it, as on the instrument. The firmware sees exactly the recorded
 raw pressure. The 8 reads of a new touch's velocity measurement are served one per read. Where the
-capture dropped records, a touched pad holds its last reading; where the drop flags show it lost a
-touch's end, the touch ends one scan period after its last reading, and those reads are marked
-`cut`. Untouched pads read what their logged neighbours recorded for them, since the firmware adds
-a neighbour's pressure to a note's.
+capture dropped records, a touched pad holds its last reading; where its records show it lost a
+touch's end (the drop flags, and a missed scan of the pad where that's in doubt), the touch ends one
+scan period after its last reading, and those reads are marked `cut`. Untouched pads read what their
+logged neighbours recorded for them, since the firmware adds a neighbour's pressure to a note's,
+kept below the continuation threshold.
 
 **Scripted events**, one per line, add what recordings lack. `setting` lines are starting settings,
 stored before the firmware boots; the others happen at a time in ms on the recording's clock (the
@@ -198,7 +199,8 @@ recording's clock:
 - `--sanitize` builds the firmware with AddressSanitizer and repeats every run with it: it fails on
   any memory error, and on logs that differ from the normal build's, which would mean the firmware's
   behaviour depends on where its variables are. Memory errors already known in the firmware are
-  contained in every desktop build, as `fwlib/memfix.py` lists.
+  contained in every desktop build where their code is still there, as `fwlib/memfix.py` lists; the
+  replay says when the two builds it compares had different ones contained.
 - `--save DIR` copies the logs to DIR, gzipped, with `SHA256SUMS` of the uncompressed files;
   `--baseline DIR` then compares with them instead of building BASE.
 

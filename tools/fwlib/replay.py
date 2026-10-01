@@ -348,6 +348,12 @@ def replay(tc, target, plan, jobs=None, log=print, fresh=False):
     return results
 
 
+def contained(target):
+    """The memory errors contained in the target's replay build (fwlib/memfix.py)."""
+    text = _read(os.path.join(target.work_dir(), 'replay', 'desktop', 'contained.txt'))
+    return text.splitlines() if text else []
+
+
 def _read(path):
     try:
         with open(path) as f:

@@ -320,7 +320,8 @@ def cmd_desktop(args):
     log('  32-bit long rewrites: %s' % ', '.join('%s %s' % (f, c) for f, c in changed.items()))
     log('  busy-waits whose clock reads take one pass each: %s'
         % ', '.join('%s (%d reads)' % (f, n) for f, n in result['busy_waits'].items()))
-    log('  known firmware memory errors contained (fwlib/memfix.py): %s' % ', '.join(result['contained']))
+    log('  known firmware memory errors contained (fwlib/memfix.py): %s%s' % (', '.join(result['contained']) or 'none',
+        '; not in this version of the sketch: ' + ', '.join(result['not_contained']) if result['not_contained'] else ''))
     if args.run:
         provision, run = desktop.boot_and_run(result['exe'], out, settings=args.settings, seconds=args.seconds,
                                               midi_log=os.path.abspath(args.midi_log) if args.midi_log else None,
@@ -388,6 +389,11 @@ def cmd_replay(args):
 
     log('')
     log('replayed: %s' % target.describe())
+    contained = replay.contained(target)
+    log('memory errors contained (fwlib/memfix.py): %s' % (', '.join(contained) or 'none'))
+    if compared and not args.baseline and replay.contained(base) != contained:
+        log('NOTE: %s had different ones contained: %s; a difference in runs that reach them can come from that'
+            % (base.describe(), ', '.join(replay.contained(base)) or 'none'))
     if compared:
         log('compared with: %s (midi.txt, byte for byte)' % compared)
     log('')

@@ -25,6 +25,7 @@ base    mpe=15                          # channel per note with the firmware's M
 base    rowOffset=5 colOffset=2 edo=12  # Wicki-Hayden: +5 per row, +2 per column, microLinn's 12-EDO
 
 config  wicki-hayden                                                  # the main configuration: the base as it is
+config  channels-2-8        mpe=7                                     # the firmware's own MPE setup (per-split settings): 7 note channels, 2-8, which run out much sooner
 config  col1                colOffset=1                               # one semitone per column
 config  no-edo              edo=off                                   # microLinn's EDO off
 config  no-edo-col1         edo=off colOffset=1                       # EDO off, one semitone per column
