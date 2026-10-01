@@ -1418,8 +1418,9 @@ short microLinnSweetener[NUMSPLITS];                            // 2¢ (or whate
 char microLinnAnchorString[6] = "R C  ";                        // row and column of the anchor cell, e.g. "R3C12", top row is row #1
 short microLinnHammerOnEdosteps[NUMSPLITS];                     // convert Split[side].microLinn.hammerOnZone from cents to edosteps
 struct MicroLinnHammerOn {signed char note, channel, col, row;};      // -1 means no note or channel or col or row
-MicroLinnHammerOn microLinnHammerOns[9];                        // for each hammer-on (10 fingers = 9 max), store the midi channel and note
-byte microLinnNumHammerOns = 0;                                 // pointer into microLinnHammerOns[9]
+const byte MICROLINN_MAX_HAMMER_ONS = 9;                        // 10 fingers = 9 muted touches max
+MicroLinnHammerOn microLinnHammerOns[MICROLINN_MAX_HAMMER_ONS]; // for each muted touch, store its note, midi channel and cell until it's released
+byte microLinnNumHammerOns = 0;                                 // number of entries in microLinnHammerOns
 byte microLinnScale[MICROLINN_MAX_EDO+1];                       // condensed scale e.g. 12edo major scale --> [0 2 4 5 7 9 11 12 0 0 0 0]
 byte microLinnScaleLookup[MICROLINN_MAX_EDO+1];                 // look up scale step by edostep          --> [0 0 1 0 2 3 0 4 0 5 0 6 7]
 byte microLinnNumNotes;                                         // number of notes in the condensed scale, 1..55
@@ -2226,7 +2227,8 @@ signed char prepareMicroLinnHammerOn(byte side, byte row) {
     if (touchInfo[col][row].touched == touchedCell &&
         //colsInRowTouched & (1 << (col)) &&
         calcTimeDelta(millis(), touchInfo[col][row].lastTouch) > wait &&
-        abs(microLinnEdostep[side][col][row] - sensorEdostep) <= maxEdosteps) {
+        abs(microLinnEdostep[side][col][row] - sensorEdostep) <= maxEdosteps &&
+        microLinnNumHammerOns < MICROLINN_MAX_HAMMER_ONS) {                           // if the list is full, the note isn't muted
       touchInfo[col][row].touched = ignoredCell;
       note = touchInfo[col][row].note;            // + (touchInfo[col][row].microLinnGroup << 7);
       channel = touchInfo[col][row].channel;
@@ -2292,31 +2294,46 @@ bugs:
 
 void microLinnDeleteHammeredNote (byte i) {
   microLinnNumHammerOns -= 1;
-  memcpy(&microLinnHammerOns[i], &microLinnHammerOns[i + 1], 4 * (microLinnNumHammerOns - i));
+  memmove(&microLinnHammerOns[i], &microLinnHammerOns[i + 1], 4 * (microLinnNumHammerOns - i));
   memset(&microLinnHammerOns[microLinnNumHammerOns], -1, 4);
 }
 
-// called by sendReleasedNote() in ls_handleTouches.ino
+signed char microLinnFindHammeredNote (byte col, byte row) {                  // returns -1 if the cell's touch isn't muted
+  for (byte i = 0; i < microLinnNumHammerOns; ++i) {
+    if (microLinnHammerOns[i].col == col && microLinnHammerOns[i].row == row &&
+        microLinnHammerOns[i].note == touchInfo[col][row].note &&
+        microLinnHammerOns[i].channel == touchInfo[col][row].channel) return i;
+  }
+  return -1;
+}
+
+// called by handleTouchRelease() in ls_handleTouches.ino, when an ignored touch is released
+void releaseMicroLinnMutedNote() {
+  // a muted touch's noteOff was sent when it was muted, so end it like any released touch but send nothing
+  signed char i = microLinnFindHammeredNote(sensorCol, sensorRow);
+  if (i == -1) return;
+  microLinnDeleteHammeredNote(i);
+  noteTouchMapping[sensorSplit].noteOff(sensorCell->note, sensorCell->channel);
+  releaseChannel(sensorSplit, sensorCell->channel);
+  sensorCell->clearMusicalData();
+}
+
+// called by transferFromSameRowCell() and transferToSameRowCell() in ls_handleTouches.ino, when a touch slides to another cell
+void moveMicroLinnHammeredNote(byte fromCol, byte toCol) {
+  // a muted touch stays muted when it slides, so that a pull-off can still find it
+  signed char i = microLinnFindHammeredNote(fromCol, sensorRow);
+  if (i == -1) return;
+  microLinnHammerOns[i].col = toCol;
+  cellTouched(toCol, sensorRow, ignoredCell);
+}
+
+// called by sendReleasedNote() in ls_handleTouches.ino, for a focused note
 void sendMicroLinnPullOff() {
-  // if the note is focused = not muted, send a noteOff and send a pull-off noteOn for the most recent note
-  // if the note is not focused = muted, don't send a noteOff or a pull-off and delete it from the list
+  // send a noteOff and send a pull-off noteOn for the most recent note muted on this channel
+  // muted notes are ignored touches, released by releaseMicroLinnMutedNote() instead
+  // an unfocused note shares its channel with a later note, and sendReleasedNote() releases it as usual
   signed char note = sensorCell->note;
   signed char channel = sensorCell->channel;
-
-  if (!isFocusedCell()) {
-    for (signed char i = microLinnNumHammerOns - 1; i >= 0; --i) {
-      if (microLinnHammerOns[i].note == note && 
-          microLinnHammerOns[i].channel == channel) {
-        microLinnDeleteHammeredNote(i);
-        DEBUGPRINT((0,"sendMicroLinnPullOff"));
-        DEBUGPRINT((0,"  unfocused delete i="));    DEBUGPRINT((0,(int)i));
-        DEBUGPRINT((0,"  microLinnNumHammerOns=")); DEBUGPRINT((0,(int)microLinnNumHammerOns));
-        DEBUGPRINT((0,"\n"));
-        break;
-      }
-    }
-    return;
-  }
 
   if (isMicroLinnOn()) {
     note = getMicroLinnCellMidiNote(sensorSplit, *sensorCell);
@@ -2331,7 +2348,8 @@ void sendMicroLinnPullOff() {
     // find the most recently muted pad on this channel (the other hand might be doing hammer-ons on another channel)
     signed char col = microLinnHammerOns[i].col;
     signed char row = microLinnHammerOns[i].row;
-    if (microLinnHammerOns[i].channel == channel && touchInfo[col][row].touched == ignoredCell) {
+    if (microLinnHammerOns[i].channel == channel && touchInfo[col][row].touched == ignoredCell &&
+        microLinnHammerOns[i].note == touchInfo[col][row].note) {
       touchInfo[col][row].touched = touchedCell;
       //focus(sensorSplit, channel).col = col;                      // reassign focus to this cell
       //focus(sensorSplit, channel).row = row;

@@ -124,6 +124,7 @@ void transferFromSameRowCell(byte col) {
   sensorCell->note = fromCell->note;
   sensorCell->microLinnGroup = fromCell->microLinnGroup;
   moveMicroLinnSoundingNote(*fromCell, *sensorCell);
+  moveMicroLinnHammeredNote(col, sensorCol);
   sensorCell->channel = fromCell->channel;
   sensorCell->octaveOffset = fromCell->octaveOffset;
   sensorCell->fxdPrevPressure = fromCell->fxdPrevPressure;
@@ -177,6 +178,7 @@ void transferToSameRowCell(byte col) {
   toCell->note = sensorCell->note;
   toCell->microLinnGroup = sensorCell->microLinnGroup;
   moveMicroLinnSoundingNote(*sensorCell, *toCell);
+  moveMicroLinnHammeredNote(sensorCol, col);
   toCell->channel = sensorCell->channel;
   toCell->octaveOffset = sensorCell->octaveOffset;
   toCell->fxdPrevPressure = sensorCell->fxdPrevPressure;
@@ -561,7 +563,10 @@ byte takeChannel(byte split, byte row) {
     {
       if (isMicroLinnHammeringOn()) {
         signed char channel = prepareMicroLinnHammerOn(split, row);
-        if (channel > -1) return channel;
+        if (channel > -1) {
+          splitChannels[split].share(channel);         // microLinn: the hammer-on's note shares the muted note's channel
+          return channel;
+        }
       }
       return splitChannels[split].take();
     }
@@ -1361,7 +1366,7 @@ void sendNewNote() {
 
 void sendReleasedNote() {
   if (!isArpeggiatorEnabled(sensorSplit) && !isSwitchLegatoPressed(sensorSplit)) {
-    if (isMicroLinnHammeringOn()) {
+    if (isMicroLinnHammeringOn() && isFocusedCell()) {     // microLinn: an unfocused note shares its channel with a later one
       sendMicroLinnPullOff();
       return;
     }
@@ -1811,6 +1816,7 @@ void handleTouchRelease() {
 
   if (wasIgnored ||
       displayMode == displaySleep) {
+    if (wasIgnored) releaseMicroLinnMutedNote();       // microLinn: a hammer-on may have muted this touch
     postTouchRelease();
     return;
   }

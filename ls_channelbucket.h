@@ -109,6 +109,13 @@ public:
     return channel+1;
   }
 
+  // microLinn: a hammer-on's note shares the channel of the note it mutes, so both release it
+  void share(byte channel) {
+    if (channel < 1 || channel > 16 || -1 == next_[channel-1]) return;
+
+    taken_[channel-1]++;
+  }
+
   void release(byte channel) {
     // we can't release a MIDI channel that exceeds 16, nor can we work with an empty bucket
     // we expect this channel to also be already in the bucket
