@@ -66,7 +66,7 @@ const int32_t PENDING_RELEASE_RATE_X = FXD_FROM_INT(5);
 
 boolean potentialSlideTransferCandidate(byte col) {
   if (controlModeActive) return false;
-  if (col < 1) return false;
+  if (col < 1 || col >= NUMCOLS) return false;
   if (userFirmwareActive) {
     if (!userFirmwareSlideMode[sensorRow]) return false;
   }
@@ -1449,7 +1449,7 @@ unsigned short handleZExpression() {
   if (cell(sensorCol-1, sensorRow).currentRawZ && !cell(sensorCol-1, sensorRow).hasNote()) {
     adjacentZ = cell(sensorCol-1, sensorRow).currentRawZ;
   }
-  else if (cell(sensorCol+1, sensorRow).currentRawZ && !cell(sensorCol+1, sensorRow).hasNote()) {
+  else if (sensorCol+1 < NUMCOLS && cell(sensorCol+1, sensorRow).currentRawZ && !cell(sensorCol+1, sensorRow).hasNote()) {
     adjacentZ = cell(sensorCol+1, sensorRow).currentRawZ;
   }
   // the adjacent Z value is added the active cell's pressure to make
@@ -1494,7 +1494,7 @@ short handleXExpression() {
   if (cell(sensorCol-1, sensorRow).touched == transferCell) {
     transferCol = sensorCol-1;
   }
-  else if (cell(sensorCol+1, sensorRow).touched == transferCell) {
+  else if (sensorCol+1 < NUMCOLS && cell(sensorCol+1, sensorRow).touched == transferCell) {
     transferCol = sensorCol+1;
   }
 
