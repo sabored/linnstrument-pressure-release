@@ -2573,6 +2573,7 @@ void handleTempoNewTouch() {
     tempoChangeTime = now;
   }
 
+  forgetTapTempo();                                       // microLinn: a tempo swipe always starts a new count of taps
   setDisplayMode(displayGlobalWithTempo);
   updateDisplay();
 }
@@ -3019,7 +3020,11 @@ void handleGlobalSettingNewTouch() {
             }
             break;
           case 3:
-            if (!isSyncedToMidiClock()) {
+            if (displayMode == displayGlobal) {        // microLinn: the first tap only shows the tempo, and counting starts afresh
+              forgetTapTempo();
+              setDisplayMode(displayGlobalWithTempo);
+            }
+            else if (!isSyncedToMidiClock()) {
               lightLed(14, 3);
 
               tapTempoPress();

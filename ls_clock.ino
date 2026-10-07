@@ -114,3 +114,8 @@ void tapTempoPress() {
     setDisplayMode(displayGlobalWithTempo);
   }
 }
+
+// microLinn: forget the previous tap, so that the next tap starts a new count instead of setting the tempo
+void forgetTapTempo() {
+  lastTapTempo = micros() - 6000000;                     // as if it came the maximum 6 seconds before now
+}
