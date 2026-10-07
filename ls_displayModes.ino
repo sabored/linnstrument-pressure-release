@@ -1892,14 +1892,6 @@ void paintGlobalSettingsDisplay() {
     setLed(16, 2, COLOR_ORANGE, cellOn);     // for debugging, delete later
   }
 
-  // set light for shortcut to microLinn menus
-  if (!isLinn200()) setLed(16, 4, COLOR_LIME, cellOn);
-#ifdef DEBUG_ENABLED                                             // avoid conflict, column 17 also sets the debug level
-  if (isLinn200()) setLed(16, 4, COLOR_LIME, cellOn);
-#else
-  if (isLinn200()) setLed(17, 1, COLOR_LIME, cellOn);
-#endif
-
   // clearly indicate the calibration status
   setLed(16, 3, getCalibrationColor(), cellOn);
 

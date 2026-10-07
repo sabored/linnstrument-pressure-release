@@ -3036,20 +3036,6 @@ void handleGlobalSettingNewTouch() {
             break;
         }
         break;
-
-      case 16:
-        if (sensorRow == 4 && !isLinn200()) enterMicroLinnConfig();
-#ifdef DEBUG_ENABLED
-        if (sensorRow == 4 &&  isLinn200()) enterMicroLinnConfig();
-#endif
-        break;
-
-      case 17: 
-#ifndef DEBUG_ENABLED                                  // avoid conflict, column 17 also sets the debug level
-        if (sensorRow == 1 && isLinn200()) enterMicroLinnConfig();
-#endif
-        break;
-
     }
   }
 

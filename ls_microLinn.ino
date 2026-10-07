@@ -3619,7 +3619,7 @@ void paintMicroLinnDebugDump() {     // delete later from here and from ls_displ
 
 /************** microLinn config functions ************************/
 
-void enterMicroLinnConfig() {                             // called from Global Settings, col 1 row 0 or col 17 row 1
+void enterMicroLinnConfig() {                             // called from Global Settings, col 1 row 0 (VIEW MAIN)
   microLinnConfigNowScrolling = false;
   cellTouched(ignoredCell);
   resetNumericDataChange();

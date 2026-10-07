@@ -32,7 +32,7 @@ Don't uninstall when updating to a newer version of microLinn, because you'll ne
 #  MICROLINN MENUS
 
 
-To go to the main microLinn menu, on the Global Settings screen, long-press the lower left pad (VIEW MAIN). Once the edo (notes per octave) is set to anything other than OFF, VIEW MAIN turns yellow and you can simply tap it. You can also tap the yellow button in column 17 (column 16 on a LinnStrument 128).
+To go to the main microLinn menu, on the Global Settings screen, long-press the lower left pad (VIEW MAIN). Once the edo (notes per octave) is set to anything other than OFF, VIEW MAIN turns yellow and you can simply tap it.
 
 Main MicroLinn menu, *_LONG-PRESS EACH BUTTON_* to see its function as a scrolling message, and tap anywhere to stop the scrolling.
 
@@ -81,7 +81,7 @@ Additions to other menus:
 * * long-press Tap Tempo and swipe for new options TRNS-, TRNS+, 8VE±, 8VE∓, PRE, MEM, EDO+ and EDO-
 * * double-tap Low Power for dim-but-fast mode (bright blue)
 * * double-tap Update OS to uninstall microLinn (red), use with caution!
-* * yellow button(s) for the microLinn menu
+* * VIEW MAIN for the microLinn menu (long-press, or tap once it's yellow)
 
 
 # IMPORTANT TERMINOLOGY
