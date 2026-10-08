@@ -391,6 +391,7 @@ void initializeDeviceSettings() {
   Device.splitHandedness = reversedBoth;
   Device.minUSBMIDIInterval = DEFAULT_MIN_USB_MIDI_INTERVAL;
   Device.midiThrough = false;
+  Device.ignoreMidiClock = false;                          // microLinn: EXT, follow incoming MIDI clock
   Device.lastLoadedPreset = -1;
   Device.lastLoadedProject = -1;
   Global.splitActive = false;
@@ -2350,6 +2351,17 @@ void handleMIDIThroughRelease() {
   handleNumericDataReleaseCol(false);
 }
 
+// microLinn: swiping on the clock source screen switches between EXT and INT; INT drops a running sync at once
+void handleMidiClockSourceNewTouch() {
+  if (handleNumericDataNewTouchCol(Device.ignoreMidiClock) && Device.ignoreMidiClock) {
+    stopFollowingMidiClock();
+  }
+}
+
+void handleMidiClockSourceRelease() {
+  handleNumericDataReleaseCol(false);
+}
+
 static unsigned short lastAutoSensorSensitivityZ = 0;
 
 void handleSensorSensitivityZNewTouch() {
@@ -3232,6 +3244,17 @@ void handleGlobalSettingHold() {
           case 3:
             resetNumericDataChange();
             setDisplayMode(displayValueForFixedVelocity);
+            updateDisplay();
+            break;
+        }
+        break;
+
+      case 14:
+        switch (sensorRow) {
+          case 3:                                          // microLinn: a long press on the tap-tempo pad chooses INT or EXT clock
+            forgetTapTempo();                              // the press may have counted as a tap, don't pair it with later ones
+            resetNumericDataChange();
+            setDisplayMode(displayMidiClockSource);
             updateDisplay();
             break;
         }

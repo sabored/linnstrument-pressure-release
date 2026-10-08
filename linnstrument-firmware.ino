@@ -513,7 +513,8 @@ enum DisplayMode {
   displayMicroLinnOsVersion,
   displayMicroLinnConfig,
   displayMicroLinnAnchorChooser,
-  displayMicroLinnFretboardEditor
+  displayMicroLinnFretboardEditor,
+  displayMidiClockSource                          // microLinn: INT or EXT, a long press on the tap-tempo pad in Global Settings
 };
 DisplayMode displayMode = displayNormal;
 
@@ -771,8 +772,9 @@ struct MicroLinnDevice {
 struct DeviceSettings {
   byte version;                                   // the version of the configuration format, currently 16, but the microLinn version is 16 + 56 = 72
   boolean serialMode;                             // 0 = normal MIDI I/O, 1 = Arduino serial mode for OS update and serial monitor
-//byte padding1;                                  // added by the compiler, declaring it explicitly helps with the updating and bulk importing code
-//byte padding2;                                  //   "
+  boolean ignoreMidiClock;                        // microLinn: INT, ignore incoming MIDI clock and transport; false = EXT, follow them
+                                                  // (this byte was compiler padding, so it's false in all earlier settings)
+//byte padding2;                                  // added by the compiler, declaring it explicitly helps with the updating and bulk importing code
   CalibrationX calRows[MAXCOLS+1][4];             // store four rows of calibration data
   CalibrationY calCols[9][MAXROWS];               // store nine columns of calibration data
   uint32_t calCrc;                                // the CRC check value of the calibration data to see if it's still valid

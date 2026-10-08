@@ -679,6 +679,9 @@ void handleNonPlayingTouch() {
     case displayMIDIThrough:
       handleMIDIThroughNewTouch();
       break;
+    case displayMidiClockSource:                           // microLinn
+      handleMidiClockSourceNewTouch();
+      break;
     case displaySensorSensitivityZ:
       handleSensorSensitivityZNewTouch();
       break;
@@ -1720,6 +1723,9 @@ boolean handleNonPlayingRelease() {
         break;
       case displayMIDIThrough:
         handleMIDIThroughRelease();
+        break;
+      case displayMidiClockSource:                         // microLinn
+        handleMidiClockSourceRelease();
         break;
       case displayValueForFixedVelocity:
         handleValueForFixedVelocityRelease();

@@ -132,6 +132,8 @@ void handleMidiInput(unsigned long nowMicros) {
         midiMessageBytes = 1;
         midiMessageIndex = 1;
 
+        if (Device.ignoreMidiClock) break;                   // microLinn: INT clock ignores incoming transport
+
         if (!receivedSongPositionPointer) {
           midiClockMessageCount = 1;
           setSequencerSongPositionPointer(0);
@@ -146,6 +148,8 @@ void handleMidiInput(unsigned long nowMicros) {
       case MIDIStop:
         midiMessageBytes = 1;
         midiMessageIndex = 1;
+
+        if (Device.ignoreMidiClock) break;                   // microLinn: INT clock ignores incoming transport
 
         sequencersTurnOff(false);
 
@@ -301,6 +305,8 @@ void handleMidiInput(unsigned long nowMicros) {
     switch (midiStatus) {
       case MIDISongPositionPointer:
       {
+        if (Device.ignoreMidiClock) break;                   // microLinn: INT clock ignores incoming transport
+
         unsigned pos = midiData2 << 7 | midiData1;
         midiClockMessageCount = (pos * 6) % 24 + 1;
 
@@ -1781,6 +1787,16 @@ void sendNrpnParameter(int parameter, int channel) {
   if (value != INT_MIN) {
     midiSendNRPN(parameter, value, channel);
   }
+}
+
+// microLinn: switching to INT clock stops following incoming MIDI clock without stopping anything,
+// the sequencer and arpeggiator go on with the internal clock at the last tempo
+void stopFollowingMidiClock() {
+  midiClockStatus = midiClockOff;
+  midiClockMessageCount = 0;
+  lastMidiClockTime = 0;
+  initialMidiClockMessageCount = 0;
+  resetClockAdvancement(micros());
 }
 
 inline boolean isSyncedToMidiClock() {

@@ -56,6 +56,7 @@ displaySleepConfig            : sleep mode configuration
 displayRowOffset              : custom row offset selection
 displayGuitarTuning           : guitar tuning configuration
 displayMIDIThrough            : MIDI through configuration
+displayMidiClockSource        : MIDI clock source, INT or EXT (microLinn)
 displaySequencerProjects      : sequencer projects
 displaySequencerDrum0107      : sequencer first 7 drum notes
 displaySequencerDrum0814      : sequencer second 7 drum notes
@@ -225,6 +226,9 @@ void updateDisplay() {
       break;
     case displayMIDIThrough:
       paintMIDIThrough();
+      break;
+    case displayMidiClockSource:                           // microLinn
+      paintMidiClockSource();
       break;
     case displaySequencerProjects:
       paintSequencerProjects();
@@ -1515,6 +1519,12 @@ void paintMIDIThrough() {
   }
 }
 
+// microLinn: INT ignores incoming MIDI clock and transport, EXT follows them
+void paintMidiClockSource() {
+  clearDisplay();
+  adaptfont_draw_string(0, 0, Device.ignoreMidiClock ? "INT" : "EXT", globalColor, true);
+}
+
 void paintMinUSBMIDIIntervalDisplay() {
   clearDisplay();
   paintNumericDataDisplay(globalColor, Device.minUSBMIDIInterval, 0, true);
@@ -1840,7 +1850,7 @@ inline void paintGlobalSettingsFlashTempo(unsigned long now, byte col, byte row)
 
     // flash the tap tempo cell at the beginning of the beat
     if (flash_on) {
-      lightLed(col, row);
+      setLed(col, row, Device.ignoreMidiClock ? globalAltColor : globalColor, cellOn);   // microLinn: the alternate colour for INT clock
       tempoLedOn = now;
     }
 
