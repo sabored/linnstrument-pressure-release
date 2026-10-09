@@ -167,6 +167,14 @@ static uint8_t g_adcLsb = 0;
 
 uint64_t sensorSelection() { return g_selection; }
 
+static LedSpiHook g_ledHook = nullptr;
+static void* g_ledUser = nullptr;
+
+void setLedSpiHook(LedSpiHook hook, void* user) {
+  g_ledHook = hook;
+  g_ledUser = user;
+}
+
 static uint8_t spiTransfer(uint8_t pin, uint8_t data, SPITransferMode mode) {
   if (pin == PIN_SPI_SENSOR) {
     // selectSensorCell() sends the LSB (row and row switches) first, then the MSB (column and
@@ -198,6 +206,7 @@ static uint8_t spiTransfer(uint8_t pin, uint8_t data, SPITransferMode mode) {
   }
   if (pin == PIN_SPI_LEDS) {
     ++g_counters.ledSpiBytes;
+    if (g_ledHook) g_ledHook(g_nowNs, data, g_ledUser);
     return 0;
   }
   return 0;

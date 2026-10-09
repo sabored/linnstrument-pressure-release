@@ -61,6 +61,13 @@ void setUartTxHook(UartTxHook hook, void* user);
 void uartInject(const uint8_t* data, size_t n);   // bytes for the firmware to receive (MIDI in, serial)
 uint32_t uartBaud();                               // 0 until the firmware calls Serial.begin()
 
+// ---- LEDs
+// The firmware refreshes one LED column at a time over SPI (refreshLedColumn()): the column's address,
+// then its blue, green and red bytes. The hook sees each byte as it's sent, so that two builds can be
+// compared on what the LEDs show, and when.
+typedef void (*LedSpiHook)(uint64_t tNs, uint8_t value, void* user);
+void setLedSpiHook(LedSpiHook hook, void* user);
+
 // ---- Digital pins
 // Inputs read HIGH by default: pin 38 HIGH means a LinnStrument 200, and the footswitch inputs (33
 // left, 34 right) idle HIGH through their pull-ups. The firmware takes the footswitch level it sees
