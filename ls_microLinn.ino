@@ -3706,11 +3706,19 @@ void microLinnPaintConfigButtons() {
   }
 }
 
-void paintMicroLinnConfig() {
+void paintMicroLinnConfig() {                             // called by updateDisplay(), never scrolls the title
+  microLinnPaintConfig(false);
+}
+
+// Only a long press scrolls a title or a row label, through the scrollTitle and scrollLabel arguments.
+// A repaint mustn't scroll it again: updateDisplay() buffers the LEDs until it ends, so the text would
+// scroll unseen and the screen would seem frozen until a touch stopped it. The NowScrolling flags only
+// stop a press from scrolling twice; the next touch on the screen clears them.
+void microLinnPaintConfig(boolean scrollTitle) {
   clearDisplay();
   microLinnPaintConfigButtons();
 
-  if (microLinnConfigNowScrolling) {
+  if (scrollTitle) {
     switch (microLinnConfigColNum) {
       case  2: microLinnScrollSmall("PER-SPLIT COLUMN OFFSET"); break;
       case  4: microLinnScrollSmall("PER-SPLIT ROW OFFSET"); break;
@@ -3727,12 +3735,12 @@ void paintMicroLinnConfig() {
   switch (microLinnConfigColNum) {
     case  2: microLinnPaintColOffset(); break;
     case  4: microLinnPaintRowOffset(); break;
-    case  6: microLinnPaintPerSplitSettings(); break;
-    case  8: microLinnPaintGlobalSettings(); break;
+    case  6: microLinnPaintPerSplitSettings(false); break;
+    case  8: microLinnPaintGlobalSettings(false); break;
     case 10: microLinnPaintEDO(); break;
     case 12: if (isMicroLinnOn()) {microLinnPaintNoteLights();} break; 
-    case 14: if (isMicroLinnOn()) {microLinnPaintPerSplitXenSettings();} break;
-    case 16: if (isMicroLinnOn()) {microLinnPaintGlobalXenSettings();} break;
+    case 14: if (isMicroLinnOn()) {microLinnPaintPerSplitXenSettings(false);} break;
+    case 16: if (isMicroLinnOn()) {microLinnPaintGlobalXenSettings(false);} break;
   }
 }
 
@@ -3778,7 +3786,7 @@ void handleMicroLinnConfigHold() {
   if (microLinnIsConfigButton() && !microLinnConfigNowScrolling &&            // long-press bottom row (or short-press when no edo is set)
      (isCellPastSensorHoldWait() || microLinnIsDisabledConfigButton())) {     
     microLinnConfigNowScrolling = true;
-    paintMicroLinnConfig();                                                   // scroll the name of the button
+    microLinnPaintConfig(true);                                               // scroll the name of the button
   }
   if (sensorRow == 0) return;
   switch (microLinnConfigColNum) {
@@ -3917,13 +3925,13 @@ void microLinnPaintPerSplitSettingsButtons() {
   }
 }
 
-void microLinnPaintPerSplitSettings() {
+void microLinnPaintPerSplitSettings(boolean scrollLabel) {
   byte side = Global.currentPerSplit;
   byte color = Split[side].colorMain;
   signed char offset;
   microLinnPaintShowSplitSelection(microLinnPerSplitSettingsLinked[microLinnPerSplitSettingsRowNum]);
   microLinnPaintPerSplitSettingsButtons();
-  if (microLinnPerSplitSettingsNowScrolling) {
+  if (scrollLabel) {
     switch (microLinnPerSplitSettingsRowNum) {
       case 7: microLinnScrollSmall ("MONO FIXES"); break;
       case 6: microLinnScrollSmall ("HAMMER-ON DIRECTION"); break;
@@ -4052,7 +4060,7 @@ void microLinnHandlePerSplitSettingsHold() {
       isCellPastSensorHoldWait() && 
       !microLinnPerSplitSettingsNowScrolling) {     
     microLinnPerSplitSettingsNowScrolling = true;
-    microLinnPaintPerSplitSettings();                                          // scroll the name of the button
+    microLinnPaintPerSplitSettings(true);                                      // scroll the name of the button
   }
 }
 
@@ -4091,9 +4099,9 @@ boolean microLinnIsLinnCC(byte CC) {
   return false;
 }
 
-void microLinnPaintGlobalSettings() {
+void microLinnPaintGlobalSettings(boolean scrollLabel) {
   microLinnPaintGlobalSettingsButtons();
-  if (microLinnGlobalSettingsNowScrolling) {
+  if (scrollLabel) {
     switch (microLinnGlobalSettingsRowNum) {
       case 7: microLinnScrollSmall("DRUM PAD MODE"); break;
       case 6: microLinnScrollSmall("SAME/BLINK CARRY OVER"); break;
@@ -4200,7 +4208,7 @@ void microLinnHandleGlobalSettingsHold() {
       isCellPastSensorHoldWait() && 
       !microLinnGlobalSettingsNowScrolling) {     
     microLinnGlobalSettingsNowScrolling = true;
-    microLinnPaintGlobalSettings();                                          // scroll the name of the button
+    microLinnPaintGlobalSettings(true);                                      // scroll the name of the button
   }
 }
 
@@ -4414,12 +4422,12 @@ void microLinnPaintPerSplitXenSettingsButtons() {
   }
 }
 
-void microLinnPaintPerSplitXenSettings() {
+void microLinnPaintPerSplitXenSettings(boolean scrollLabel) {
   byte side = Global.currentPerSplit;
   byte color = Split[side].colorMain;
   microLinnPaintShowSplitSelection(microLinnPerSplitXenSettingsLinked[microLinnPerSplitXenSettingsRowNum]);
   microLinnPaintPerSplitXenSettingsButtons();
-  if (microLinnPerSplitXenSettingsNowScrolling) {
+  if (scrollLabel) {
     switch (microLinnPerSplitXenSettingsRowNum) {
       case 7: microLinnScrollSmall("CONDENSE TO SCALE"); break;
       case 6: microLinnScrollSmall("DEFAULT LAYOUT BOSANQUET ACCORDION WICKI-HAYDEN ARRAY-MBIRA"); break;
@@ -4567,7 +4575,7 @@ void microLinnHandlePerSplitXenSettingsHold() {
       isCellPastSensorHoldWait() && 
       !microLinnPerSplitXenSettingsNowScrolling) {     
     microLinnPerSplitXenSettingsNowScrolling = true;
-    microLinnPaintPerSplitXenSettings();                                          // scroll the name of the button
+    microLinnPaintPerSplitXenSettings(true);                                      // scroll the name of the button
   }
 }
 
@@ -4601,9 +4609,9 @@ void microLinnPaintGlobalXenSettingsButtons() {
   }
 }
 
-void microLinnPaintGlobalXenSettings() {
+void microLinnPaintGlobalXenSettings(boolean scrollLabel) {
   microLinnPaintGlobalXenSettingsButtons();
-  if (microLinnGlobalXenSettingsNowScrolling) {
+  if (scrollLabel) {
     switch (microLinnGlobalXenSettingsRowNum) {
       case 7: microLinnScrollSmall("ANCHOR PAD"); break;
       case 6: microLinnScrollSmall("ANCHOR NOTE"); break;
@@ -4709,7 +4717,7 @@ void microLinnHandleGlobalXenSettingsHold() {
       isCellPastSensorHoldWait() && 
       !microLinnGlobalXenSettingsNowScrolling) {     
     microLinnGlobalXenSettingsNowScrolling = true;
-    microLinnPaintGlobalXenSettings();                                // scroll the name of the button
+    microLinnPaintGlobalXenSettings(true);                            // scroll the name of the button
   }
 }
 
