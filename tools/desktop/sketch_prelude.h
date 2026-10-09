@@ -1,6 +1,7 @@
 // Included first in the desktop build's sketch translation unit, before the sketch's own
 // #include <Arduino.h>. Standard headers the HAL and harnesses need must come before the Arduino API
 // defines min/max/abs/round/true/false as macros.
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -22,3 +23,13 @@
 #define strstr(s, t) ((char*)::strstr((s), (t)))
 #define strpbrk(s, t) ((char*)::strpbrk((s), (t)))
 #define memchr(s, c, n) ((void*)::memchr((s), (c), (n)))
+
+// newlib's integer-only snprintf, which the sketch uses for formats with no floating-point conversion.
+// This C library doesn't have it; its snprintf gives the same output for such formats.
+inline int sniprintf(char* str, size_t size, const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  int n = vsnprintf(str, size, format, args);
+  va_end(args);
+  return n;
+}

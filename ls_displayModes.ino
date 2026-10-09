@@ -1584,7 +1584,7 @@ void paintNumericDataDisplay(byte color, short value, short offset, boolean cond
     pos = 0;
   }
 
-  snprintf(str, sizeof(str), format, value);
+  sniprintf(str, sizeof(str), format, value);                 // microLinn: integer-only printf, links no float formatting
   byte row = (displayMode == displayMicroLinnConfig ? 1 : 0);  // avoid the low row buttons
   if (condensed) {
     condfont_draw_string(pos+offset, row, str, color, false);
@@ -1614,7 +1614,7 @@ void paintNoteDataDisplay(byte color, short noteNumber, short offset) {
     default: format = "%d"; break;
   }
 
-  snprintf(str, sizeof(str), format, int(noteNumber/12) - 2);
+  sniprintf(str, sizeof(str), format, int(noteNumber/12) - 2);  // microLinn: integer-only printf
   byte row = (displayMode == displayMicroLinnConfig ? 1 : 0);    // avoid the low row buttons
   condfont_draw_string(offset, row, str, color, false);
 }
@@ -2056,7 +2056,7 @@ void paintGlobalSettingsDisplay() {
     byte color = Split[LEFT].colorMain;
     char str[4];
     const char* format = "%3d";
-    snprintf(str, sizeof(str), format, FXD4_TO_INT(fxd4CurrentTempo));
+    sniprintf(str, sizeof(str), format, FXD4_TO_INT(fxd4CurrentTempo));   // microLinn: integer-only printf
     tinyfont_draw_string(0, 4, str, color);
   }
 
