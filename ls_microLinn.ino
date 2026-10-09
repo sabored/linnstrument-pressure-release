@@ -3655,16 +3655,47 @@ void microLinn_draw_string (byte col, byte row, const char* str, const char* str
   else              condfont_draw_string(col, row, str2, color, erase);
 }
 
-void microLinnScrollSmall (String text) {
+// scrolls "      text     text     text" the way small_scroll_text() would, but draws the three copies one
+// after the other rather than building that string, which took a 200-byte buffer on the stack
+// this mirrors font_scroll_text() in ls_font.ino, and must follow any change made to it
+void microLinnScrollSmall (const char* text) {
   if (displayMode == displayMicroLinnConfig &&
       microLinnConfigColNum > 10 &&
       !isMicroLinnOn()) {
     text = "FIRST SELECT AN EDO";
   }
-  char tripleText[200];                                      // 200 to fit the layout message, the longest message
+  byte color = microLinnGetColor(false);
+  unsigned long origInterval = ledRefreshInterval;
+  ledRefreshInterval = 200;
+
+  animationActive = true;
+  stopAnimation = false;
+
   // leading spaces ensure the string first appears on the right edge, not on the left edge
-  snprintf(tripleText, sizeof(tripleText), "      %s     %s     %s", text.c_str(), text.c_str(), text.c_str());
-  small_scroll_text(tripleText, microLinnGetColor(false));
+  int leadWidth = font_width_string("      ", &smallFont);
+  int gapWidth = font_width_string("     ", &smallFont);
+  int textWidth = font_width_string(text, &smallFont);
+  int totalwidth = leadWidth + 3 * textWidth + 2 * gapWidth;
+  byte row = (displayMode == displayMicroLinnConfig ? 1 : 0);    // avoid the low row buttons
+  for (int i = 0; i < totalwidth && !stopAnimation; ++i) {
+    font_draw_string(-i, row, "      ", color, &smallFont, true, false, COLOR_OFF);
+    int col = leadWidth - i;
+    for (byte copy = 0; copy < 3; ++copy) {
+      if (copy > 0) {
+        font_draw_string(col, row, "     ", color, &smallFont, true, false, COLOR_OFF);
+        col += gapWidth;
+      }
+      font_draw_string(col, row, text, color, &smallFont, true, false, COLOR_OFF);
+      col += textWidth;
+    }
+    delayUsecWithScanning(40000);
+  }
+
+  clearDisplay();
+
+  animationActive = false;
+
+  ledRefreshInterval = origInterval;
 }
 
 void microLinnPaintConfigButtons() {
@@ -5312,12 +5343,12 @@ void importMicroLinnData(int value) {
 #endif  
 
   if (!microLinnImportingOn)                           {microLinnScrollSmall("FIRST TURN ON IMPORTING"); return;}
-  if (!isValidImportType)                              {microLinnScrollSmall("IMPORT FAILURE INVALID IMPORT TYPE " + String(importType)); return;}
+  if (!isValidImportType)                              {microLinnScrollSmall(("IMPORT FAILURE INVALID IMPORT TYPE " + String(importType)).c_str()); return;}
   if (importType == 1 && Global.activeNotes < 9)       {microLinnScrollSmall("FIRST SELECT A LIGHT PATTERN"); return;}
   if (importType == 3 && audienceMessageToEdit == -1)  {microLinnScrollSmall("FIRST EDIT AN AUDIENCE MESSAGE"); return;}
   if (importType >= 5 && importType <= 8) {
     byte minEDO = importType == 5 ? 4 : 5;             // importing scales works with 12edo too
-    if (EDO < minEDO || EDO > MICROLINN_MAX_EDO)       {microLinnScrollSmall("IMPORT FAILURE INVALID EDO " + String(EDO)); return;}
+    if (EDO < minEDO || EDO > MICROLINN_MAX_EDO)       {microLinnScrollSmall(("IMPORT FAILURE INVALID EDO " + String(EDO)).c_str()); return;}
     edo = Global.microLinn.EDO = EDO;                  // switch to the edo if it's valid
     if (edo == 4) edo = 12;
   }
@@ -5408,10 +5439,10 @@ void receiveMicroLinnPolyPressure(byte data1, byte data2, byte channel) {
   if (channel == 8) {
     if (data1 > Device.version || data2 > Device.microLinn.MLversion) {         // cancel imports from future versions
       microLinnImportType = 0;
-      microLinnScrollSmall("IMPORT FAILURE UNKNOWN DATA VERSION " + String(data1) + " " + String(data2));
+      microLinnScrollSmall(("IMPORT FAILURE UNKNOWN DATA VERSION " + String(data1) + " " + String(data2)).c_str());
     } else if (microLinnImportType == 15 && !microLinnIsCurrentLayout(data1, data2)) {
       microLinnImportType = 0;
-      microLinnScrollSmall("IMPORT FAILURE DATA VERSION MISMATCH " + String(data1) + " " + String(data2));
+      microLinnScrollSmall(("IMPORT FAILURE DATA VERSION MISMATCH " + String(data1) + " " + String(data2)).c_str());
     } else {
       microLinnImportMLversion = data2;
       microLinnDeduceImportSize(data1, data2);
@@ -5425,7 +5456,7 @@ void receiveMicroLinnPolyPressure(byte data1, byte data2, byte channel) {
   if (channel == 12) {
     if (microLinnImportCounter < microLinnImportSize) {
       short c = microLinnImportCounter;                   // c = the counter, 0-indexed
-      microLinnScrollSmall("IMPORT FAILURE NOT ENOUGH DATA " + String(c) + " " +  String(c/2+8));
+      microLinnScrollSmall(("IMPORT FAILURE NOT ENOUGH DATA " + String(c) + " " +  String(c/2+8)).c_str());
     } else if (microLinnImportSize == 0) {
       microLinnScrollSmall("IMPORT FAILURE NO HEADER");
     } else if (data1 != microLinnImportType) { 
@@ -5457,7 +5488,7 @@ void receiveMicroLinnPolyPressure(byte data1, byte data2, byte channel) {
   data2 += (channel & 2) << 6;
   unsigned short i = microLinnImportCounter;
   if (i >= microLinnImportSize) {                             // ignore excess bytes
-    microLinnScrollSmall("IMPORT WARNING EXCESS DATA " + String(i) + " " +  String(i/2+8));
+    microLinnScrollSmall(("IMPORT WARNING EXCESS DATA " + String(i) + " " +  String(i/2+8)).c_str());
     if (inRange(microLinnImportType, 4, 16)) setupMicroLinn();
     setMidiChannelSelect();
     microLinnImportType = 0;
@@ -5716,7 +5747,7 @@ void receiveMicroLinnPolyPressure(byte data1, byte data2, byte channel) {
 void microLinnCancelImport() {
   short i = microLinnImportCounter;                // i = the counter, 0-indexed
   short j = microLinnImportCounter / 2 + 8;        // j = which midi message, 1-indexed, include the headers
-  microLinnScrollSmall("IMPORT FAILURE " + String(i) + " " +  String(j));
+  microLinnScrollSmall(("IMPORT FAILURE " + String(i) + " " +  String(j)).c_str());
   if (inRange(microLinnImportType, 4, 16)) setupMicroLinn();
   microLinnImportType = 0;
   setMidiChannelSelect();
