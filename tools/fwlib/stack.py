@@ -12,8 +12,8 @@ and libgcc. The model and its assumptions:
   loaded from literal pools through registers, stack slots and branch joins, and C++ virtual calls
   (vtable pointer, then slot) to every vtable's function at that slot. INDIRECT_TARGETS resolves the
   few calls through function-pointer variables. Anything else may reach any function whose address
-  appears in the program image (except interrupt vectors, main and Reset_Handler); those call sites
-  are listed.
+  is stored in the program image, in a word-aligned word (except interrupt vectors, main and
+  Reset_Handler); those call sites are listed.
 - Re-entry: the call graph is cut at the scan loop (modeLoopPerformance) and at
   performContinuousTasks, which the firmware re-enters by design (delayUsecWithScanning() runs the
   scan loop while text scrolls; performContinuousTasks runs inside delayUsec(), inside setLed()
@@ -457,10 +457,13 @@ def load(tc, elf, binf, build_path):
                     slots[off].add(v & ~1)
 
     # ---- the functions an unresolved indirect call may reach: any function whose address is stored
-    # in the image, except interrupt vectors (only the hardware calls those), main and Reset_Handler
+    # in the image, except interrupt vectors (only the hardware calls those), main and Reset_Handler.
+    # Only word-aligned words count: the compiler stores pointers word-aligned, in data and in literal
+    # pools alike. Bytes at other offsets can spell a function's address by chance (in microLinn's scale
+    # tables, for one), and such a match made that function reachable from every unresolved call.
     vectors = {word(FLASH_BASE + 4 * i) & ~1 for i in range(1, VECTOR_WORDS) if word(FLASH_BASE + 4 * i)}
     taken = set()
-    for off in range(0, len(image) - 3, 2):
+    for off in range(0, len(image) - 3, 4):
         v = int.from_bytes(image[off:off + 4], 'little')
         if v & 1 and (v & ~1) in funcs:
             taken.add(v & ~1)
