@@ -3668,6 +3668,11 @@ void microLinnScrollSmall (const char* text) {
   unsigned long origInterval = ledRefreshInterval;
   ledRefreshInterval = 200;
 
+  // an import message can arrive while updateDisplay() paints with the LEDs buffered (setLed() reads MIDI
+  // then), and would scroll unseen, freezing the screen: draw it on the visible LEDs, buffer again after
+  byte buffered = bufferedLeds;
+  bufferedLeds = 0;
+
   animationActive = true;
   stopAnimation = false;
 
@@ -3696,6 +3701,8 @@ void microLinnScrollSmall (const char* text) {
   animationActive = false;
 
   ledRefreshInterval = origInterval;
+
+  bufferedLeds = buffered;
 }
 
 void microLinnPaintConfigButtons() {
