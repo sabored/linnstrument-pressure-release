@@ -200,6 +200,11 @@ inline unsigned short readZ() {                       // returns the raw Z value
 
   rawZ = applyRawZBias(rawZ);
 
+  // a press above the maximum reads as the maximum, since TouchInfo keeps the raw Z in 12 bits, where a higher value would wrap around
+  if (rawZ > 4095) {
+    rawZ = 4095;
+  }
+
   return rawZ;
 }
 
