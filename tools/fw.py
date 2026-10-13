@@ -32,7 +32,8 @@ from fwlib import arduino, desktop, layout, replay, sketch, stack, warnings  # n
 
 REPO = sketch.repo_root(os.path.dirname(os.path.abspath(__file__)))
 STACK_BUILD_PREFS = ('compiler.cpp.extra_flags=-fstack-usage', 'compiler.c.extra_flags=-fstack-usage')
-MIN_MARGIN = 256          # bytes of RAM that must be left after the stack without re-entry
+MIN_MARGIN = 256          # bytes of RAM that must be left after the stack, without re-entry and with one re-entry of each
+REENTRY_LEVELS = (2, 2)   # one re-entry of each scheduler
 
 
 def log(msg):
@@ -233,6 +234,12 @@ def print_stack(r, verbose, no_float=None, ram_free=None):
     log('  indirect calls resolved by annotation: %s' % (', '.join(r['annotated']) or 'none'))
     log('  indirect calls that may reach any of the %d functions whose address is stored: %s'
         % (r['address_taken'], ', '.join(r['unresolved_sites']) or 'none'))
+    log('  words spelling a function\'s address inside data that holds no pointers, ignored: %d%s'
+        % (r['ignored_in_data'], '' if not r['ignored_in_data'] else ' (' + '; '.join(r['stored_at']['ignored'][:3])
+                                     + ('...' if r['ignored_in_data'] > 3 else '') + ')'))
+    for f in r['unaligned_function_pointers']:
+        log('  FAILED: a function pointer at an offset that isn\'t a multiple of 4, which the scan for stored '
+            'addresses would miss: %s' % f)
     if r['dynamic']:
         log('  dynamic stack frames (not bounded): %s' % ', '.join(r['dynamic']))
     if r['capped']:
@@ -245,6 +252,10 @@ def print_stack(r, verbose, no_float=None, ram_free=None):
         log('deepest %s path: %s' % (r['high_isr'], ' > '.join('%s (%d)' % p for p in r['high_path'])))
         for c in r['cycles']:
             log('call cycle (each function walked once): %s' % ', '.join(c))
+        for name, places in r['stored_at']['taken']:
+            log('address stored: %s: %s' % (name, '; '.join(places)))
+        for text in r['stored_at']['ignored']:
+            log('address-like word ignored: %s' % text)
         for n, a, b in r['su_mismatches']:
             log('frame differs: %s: prologue %d, -fstack-usage %d (used)' % (n, a, b))
 
@@ -256,6 +267,7 @@ def cmd_stack(args):
     log('%s:' % target.describe())
     print_stack(r, args.verbose, stack_result(tc, target, without_float_formatting=True),
                 reference_build(tc, target)['ram_free'])
+    return 1 if r['unaligned_function_pointers'] else 0
 
 
 def cmd_report(args):
@@ -266,14 +278,15 @@ def cmd_report(args):
     sb, sa = stack_result(tc, before), stack_result(tc, after)
     wb, wa, added, removed = warning_diff(tc, before, after)
 
-    reentry_b = dict(sb['levels']).get((2, 2))
-    reentry_a = dict(sa['levels']).get((2, 2))
+    reentry_b = dict(sb['levels']).get(REENTRY_LEVELS)
+    reentry_a = dict(sa['levels']).get(REENTRY_LEVELS)
     rows = [
         ('static RAM (.data + .bss)', rb['static_ram'], ra['static_ram']),
         ('RAM left for stack + heap', rb['ram_free'], ra['ram_free']),
         ('stack, no re-entry', sb['total'], sa['total']),
         ('RAM left after that stack', rb['ram_free'] - sb['total'], ra['ram_free'] - sa['total']),
         ('stack, one re-entry of each', reentry_b, reentry_a),
+        ('RAM left after that stack', rb['ram_free'] - reentry_b, ra['ram_free'] - reentry_a),
         ('.bin size', rb['bin_size'], ra['bin_size']),
         ('flash left before 0xC0000', rb['flash_free'], ra['flash_free']),
         ('warnings (-Wall -Wextra)', len(wb), len(wa)),
@@ -301,11 +314,17 @@ def cmd_report(args):
     if ra['ram_free'] - sa['total'] < MIN_MARGIN:
         failures.append('the RAM left after the stack without re-entry is %d bytes, under the %d required'
                         % (ra['ram_free'] - sa['total'], MIN_MARGIN))
+    if ra['ram_free'] - reentry_a < MIN_MARGIN:
+        failures.append('the RAM left after the stack with one re-entry of each is %d bytes, under the %d required'
+                        % (ra['ram_free'] - reentry_a, MIN_MARGIN))
     if args.ram_budget is not None and ra['static_ram'] - rb['static_ram'] > args.ram_budget:
         failures.append('static RAM grew by %d bytes, over the budget of %d'
                         % (ra['static_ram'] - rb['static_ram'], args.ram_budget))
     if sa['capped'] or any(not found for _, _, _, found in sa['infeasible']):
         failures.append('the stack analysis needs attention (see fw.py stack)')
+    if sa['unaligned_function_pointers']:
+        failures.append('the debug info shows a function pointer at an offset that isn\'t a multiple of 4, '
+                        'which the stack analysis would miss (see fw.py stack)')
     if failures:
         log('FAILED: %s' % '; '.join(failures))
         return 1

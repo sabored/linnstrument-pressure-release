@@ -13,7 +13,10 @@ and libgcc. The model and its assumptions:
   (vtable pointer, then slot) to every vtable's function at that slot. INDIRECT_TARGETS resolves the
   few calls through function-pointer variables. Anything else may reach any function whose address
   is stored in the program image, in a word-aligned word (except interrupt vectors, main and
-  Reset_Handler); those call sites are listed.
+  Reset_Handler); those call sites are listed. A word inside a data object whose type the debug info
+  shows holds no pointer (a byte table, say) is data that happens to spell an address, and is
+  ignored. The scan would miss a function pointer stored at an offset that isn't a multiple of 4, so
+  the analysis fails if the debug info shows one, in a struct or in a data object.
 - Re-entry: the call graph is cut at the scan loop (modeLoopPerformance) and at
   performContinuousTasks, which the firmware re-enters by design (delayUsecWithScanning() runs the
   scan loop while text scrolls; performContinuousTasks runs inside delayUsec(), inside setLed()
@@ -45,6 +48,8 @@ import collections
 import os
 import re
 import subprocess
+
+from . import layout
 
 EXCEPTION_FRAME = 36
 VECTOR_WORDS = 16 + 45           # Cortex-M3 system exceptions + SAM3X8E peripheral interrupts
@@ -175,6 +180,106 @@ def _symbols(tc, elf):
             if addr not in funcs or (parts[4] == 'GLOBAL' and funcs[addr][2] != 'GLOBAL'):
                 funcs[addr] = (name, size, parts[4])
     return {a: (n, s) for a, (n, s, _) in funcs.items()}
+
+
+def _loaded_sections(tc, elf):
+    """The sections the .bin holds: [(load address, size, run address, name)]. .data runs from RAM
+    but is stored in the image after the code, where its initial values are copied from."""
+    out, pending = [], None
+    for line in _run([tc.tool('objdump'), '-h', elf]).splitlines():
+        m = re.match(r'\s*\d+\s+(\S+)\s+([0-9a-f]+)\s+([0-9a-f]+)\s+([0-9a-f]+)\s', line)
+        if m:
+            name, size, vma, lma = m.group(1), int(m.group(2), 16), int(m.group(3), 16), int(m.group(4), 16)
+            pending = (lma, size, vma, name)
+        elif pending and 'CONTENTS' in line and 'LOAD' in line and pending[1] and pending[0] >= FLASH_BASE:
+            out.append(pending)
+            pending = None
+    return out
+
+
+def _type_size(lay, off):
+    d = lay.strip(off)
+    if d is None:
+        return 0
+    if d.tag == 'DW_TAG_array_type':
+        count = 1
+        for dim in lay.describe(off)[1]:
+            count *= dim
+        return count * _type_size(lay, d.ref('DW_AT_type'))
+    return d.num('DW_AT_byte_size', 4 if d.tag.endswith('pointer_type') or d.tag.endswith('reference_type') else 0)
+
+
+def _may_hold_pointer(lay, desc, seen=None):
+    """False only for a type the debug info shows can't hold a pointer: numbers, enums, and arrays and
+    structs of them."""
+    seen = seen if seen is not None else set()
+    kind = desc[0]
+    if kind in ('base', 'enum'):
+        return False
+    if kind == 'array':
+        return _may_hold_pointer(lay, desc[2], seen)
+    if kind == 'agg':
+        if desc[1].offset in seen:
+            return False
+        seen.add(desc[1].offset)
+        return any(_may_hold_pointer(lay, lay.describe(t), seen) for _, _, _, t in lay.members(desc[1]))
+    return True                                     # pointers, and anything unknown
+
+
+def _function_pointers(lay, off, base, path, out, depth=0):
+    """Appends (byte offset, path) for each function pointer inside the type at `off`. In an array,
+    the first element's, and the second's too when the element size isn't a multiple of 4, since its
+    pointers then sit at other offsets."""
+    d = lay.strip(off)
+    if d is None or depth > 64:
+        return
+    if d.tag in ('DW_TAG_pointer_type', 'DW_TAG_ptr_to_member_type'):
+        t = lay.strip(d.ref('DW_AT_type'))
+        if t is not None and t.tag == 'DW_TAG_subroutine_type':
+            out.append((base, path))
+    elif d.tag == 'DW_TAG_array_type':
+        inner = []
+        _function_pointers(lay, d.ref('DW_AT_type'), 0, '', inner, depth + 1)
+        count = 1
+        for dim in lay.describe(off)[1]:
+            count *= dim
+        stride = _type_size(lay, d.ref('DW_AT_type'))
+        for element in ((0, 1) if count > 1 and stride % 4 else (0,)):
+            out += [(base + element * stride + o, '%s[%d]%s' % (path, element, p)) for o, p in inner]
+    elif d.tag in ('DW_TAG_structure_type', 'DW_TAG_class_type', 'DW_TAG_union_type'):
+        for name, bit_off, bit_size, t in lay.members(d):
+            if bit_size is None:
+                _function_pointers(lay, t, base + bit_off // 8, path + '.' + name, out, depth + 1)
+
+
+def _debug_info(elf):
+    """From the debug info: {address: (name, type offset)} of the data objects, the Layout, and the
+    function pointers it places at an offset or address that isn't a multiple of 4, as text."""
+    dies = layout.parse(elf)
+    lay = layout.Layout(dies)
+    variables = {}
+    for d in dies.values():
+        if d.tag != 'DW_TAG_variable':
+            continue
+        m = re.search(r'DW_OP_addr 0x([0-9a-f]+)\)?$', d.attrs.get('DW_AT_location', ''))
+        if not m:
+            continue
+        spec = dies.get(d.ref('DW_AT_specification')) if d.ref('DW_AT_specification') is not None else None
+        t = d.ref('DW_AT_type')
+        if t is None and spec is not None:
+            t = spec.ref('DW_AT_type')
+        name = d.name() or (spec.name() if spec is not None else None) or '?'
+        variables[int(m.group(1), 16)] = (name, t)
+    unaligned = set()
+    for name, agg in layout.aggregates(dies, None).items():
+        found = []
+        _function_pointers(lay, agg.offset, 0, name, found)
+        unaligned |= {'%s at offset %d' % (p, o) for o, p in found if o % 4}
+    for addr, (name, t) in variables.items():
+        found = []
+        _function_pointers(lay, t, addr, name, found)
+        unaligned |= {'%s at address 0x%x' % (p, o) for o, p in found if o % 4}
+    return variables, lay, sorted(unaligned)
 
 
 def _demangle(tc, names):
@@ -460,13 +565,46 @@ def load(tc, elf, binf, build_path):
     # in the image, except interrupt vectors (only the hardware calls those), main and Reset_Handler.
     # Only word-aligned words count: the compiler stores pointers word-aligned, in data and in literal
     # pools alike. Bytes at other offsets can spell a function's address by chance (in microLinn's scale
-    # tables, for one), and such a match made that function reachable from every unresolved call.
+    # tables, for one), and such a match made that function reachable from every unresolved call. So
+    # can an aligned word of data that holds no pointers: a match inside a data object whose type the
+    # debug info shows holds no pointer is ignored. Where each match lies is kept for fw.py stack -v.
+    variables, lay, unaligned = _debug_info(elf)
+    objects = []                     # (image address, size, symbol, debug-info name or None, holds pointers)
+    sections = _loaded_sections(tc, elf)
+    for line in _run([tc.tool('readelf'), '-sW', elf]).splitlines():
+        parts = line.split()
+        if len(parts) >= 8 and parts[3] == 'OBJECT' and parts[6] != 'UND':
+            addr, size = int(parts[1], 16), int(parts[2], 0)
+            for lma, length, vma, _ in sections:
+                if vma <= addr < vma + length:
+                    var = variables.get(addr)
+                    holds = _may_hold_pointer(lay, lay.describe(var[1])) if var else None
+                    objects.append((addr - vma + lma, size, parts[7], var[0] if var else None, holds))
+    objects.sort()
+    object_starts = [o[0] for o in objects]
+
+    def stored_at(a):
+        fn = owner(a)
+        if fn is not None:
+            return ('function', fn.name, a - fn.addr, None)
+        i = bisect.bisect_right(object_starts, a) - 1
+        if i >= 0 and a < objects[i][0] + max(objects[i][1], 1):
+            img, _, sym, _, holds = objects[i]
+            return ('object', sym, a - img, holds)
+        name = next((n for lma, length, _, n in sections if lma <= a < lma + length), '?')
+        return ('section', name, None, None)
+
     vectors = {word(FLASH_BASE + 4 * i) & ~1 for i in range(1, VECTOR_WORDS) if word(FLASH_BASE + 4 * i)}
-    taken = set()
+    taken, where, ignored = set(), collections.defaultdict(list), []
     for off in range(0, len(image) - 3, 4):
         v = int.from_bytes(image[off:off + 4], 'little')
         if v & 1 and (v & ~1) in funcs:
+            place = stored_at(FLASH_BASE + off)
+            if place[3] is False:
+                ignored.append((v & ~1, place))
+                continue
             taken.add(v & ~1)
+            where[v & ~1].append(place)
     taken -= vectors
     taken -= {a for a, fn in funcs.items() if fn.name in ('main', 'Reset_Handler')}
 
@@ -491,7 +629,27 @@ def load(tc, elf, binf, build_path):
                 unresolved = False
             resolved.append((addr, frozenset(real), tail, unresolved))
         fn.sites = resolved
-    return funcs, names, taken, checked, mismatches, annotated
+    stored = {'taken': {a: where[a] for a in taken}, 'ignored': ignored, 'unaligned': unaligned}
+    return funcs, names, taken, checked, mismatches, annotated, stored
+
+
+def _describe_stored(tc, names, funcs, stored):
+    """[(function, [where its address is stored])] for fw.py stack -v, and the ignored matches."""
+    symbols = {p[1] for places in stored['taken'].values() for p in places if p[0] == 'object'}
+    symbols |= {p[1] for _, p in stored['ignored']}
+    plain = _demangle(tc, symbols) if symbols else {}
+
+    def text(place):
+        kind, sym, off, _ = place
+        if kind == 'function':
+            return 'literal pool of %s' % names.get(sym, sym)
+        if kind == 'object':
+            return 'data object %s (+%d)' % (plain.get(sym, sym), off)
+        return 'no data object (in %s)' % sym
+
+    taken = sorted((names[funcs[a].name], [text(p) for p in places]) for a, places in stored['taken'].items())
+    ignored = sorted('%s in %s' % (names[funcs[a].name], text(p)) for a, p in stored['ignored'])
+    return {'taken': taken, 'ignored': ignored}
 
 
 # ---------------------------------------------------------------- worst-case paths
@@ -573,7 +731,7 @@ def _tarjan(graph):
 
 
 def analyze(tc, elf, binf, build_path, without_float_formatting=False):
-    funcs, names, taken, checked, mismatches, annotated = load(tc, elf, binf, build_path)
+    funcs, names, taken, checked, mismatches, annotated, stored = load(tc, elf, binf, build_path)
     base = {a: _base_name(names[fn.name]) for a, fn in funcs.items()}
     by_base = collections.defaultdict(set)
     for a, b in base.items():
@@ -793,6 +951,9 @@ def analyze(tc, elf, binf, build_path, without_float_formatting=False):
         'su_checked': checked, 'su_mismatches': mismatches,
         'unresolved_sites': sorted(set(unresolved_sites)),
         'address_taken': len(taken),
+        'stored_at': _describe_stored(tc, names, funcs, stored),
+        'ignored_in_data': len(stored['ignored']),
+        'unaligned_function_pointers': stored['unaligned'],
         'dynamic': sorted(names[fn.name] for fn in funcs.values() if fn.dynamic),
         'cycles': [sorted(label[a] for a in comp) for comp in sccs if len(comp) > 1],
     }

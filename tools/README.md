@@ -39,15 +39,25 @@ after, plus any warning that is new. N is the most static RAM the change may add
 error if:
 - a warning is new;
 - the program would overlap the settings;
-- the RAM left after the stack without re-entry (the row "RAM left after that stack") is under 256
-  bytes;
+- the RAM left after the stack is under 256 bytes, without re-entry or with one re-entry of each
+  scheduler (the two rows "RAM left after that stack");
 - static RAM grew by more than N bytes;
 - the stack analysis needs attention (an excluded call it couldn't find, or its nesting bound was
-  reached).
+  reached);
+- the debug info shows a function pointer at an offset that isn't a multiple of 4, which the stack
+  analysis would miss (below).
 
 The stack figures are static and conservative, and there is no static worst case, because nothing
 but a few flags bounds how deeply the firmware re-enters its schedulers. The top of `fwlib/stack.py`
 describes the model and its assumptions.
+
+An indirect call the analysis can't resolve may reach any function whose address is stored in the
+program image, in a word-aligned word. A word inside a data object that the debug info shows holds no
+pointer (a byte table, for example) only happens to spell an address, so it's ignored; `fw.py stack`
+counts the words ignored, and `-v` lists where each stored address lies (a literal pool, a data
+object, or no data object) and each word ignored. A function pointer stored at an offset that isn't a
+multiple of 4 would escape the scan, so `fw.py stack` and `fw.py report` fail when the debug info shows
+one, in a struct or in a data object.
 
 ```bash
 python3 tools/fw.py replay --recordings DIR
@@ -65,7 +75,7 @@ memory errors.
 | `build [--ref REF]` | The reference build: `.bin` path, SHA-256, size, where the program ends, static RAM |
 | `verify` | Rebuilds v0.1.0 from scratch and checks the released SHA-256 |
 | `warnings [--ref REF] [--against BASE] [--list]` | The `-Wall -Wextra` build's warnings that are new or gone compared with BASE |
-| `stack [--ref REF] [-v]` | Static stack depth without re-entry, a table with re-entry, and the stack below a list of watched functions (the touch, note and MIDI paths); the deepest path with `-v` |
+| `stack [--ref REF] [-v]` | Static stack depth without re-entry, a table with re-entry, and the stack below a list of watched functions (the touch, note and MIDI paths); with `-v`, the deepest path and where each stored function address lies; fails on a function pointer at an unaligned offset |
 | `report [--ref REF] [--against BASE] [--ram-budget N]` | All of the above, before and after |
 | `desktop [--ref REF] [--run] [--settings EXPORT] [--calibration as-exported\|stand-in] [--seconds S] [--midi-log FILE] [--harness FILE]` | Builds the whole sketch for this computer; `--run` boots it and runs it |
 | `layout [--ref REF] [-v]` | Checks that the desktop build lays out every struct as the instrument does; fails on any difference not explained by a pointer, and on a struct missing from either build |
