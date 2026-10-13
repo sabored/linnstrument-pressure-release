@@ -2644,9 +2644,9 @@ void setupMicroLinn() {                              // runs when the Linnstrume
   microLinnColOffsetLinked = microLinnIsLinked(Split[LEFT].microLinn.colOffset, Split[RIGHT].microLinn.colOffset, 1);
   microLinnRowOffsetLinked = microLinnIsLinked(Split[LEFT].microLinn.rowOffset, Split[RIGHT].microLinn.rowOffset, -MICROLINN_MAX_ROW_OFFSET-1);
   microLinnPerSplitSettingsLinked[7] = microLinnIsLinked(Split[LEFT].microLinn.monoFixes, Split[RIGHT].microLinn.monoFixes, 0);
-  microLinnPerSplitSettingsLinked[4] = microLinnIsLinked(Split[LEFT].microLinn.hammerOnMode(), Split[RIGHT].microLinn.hammerOnMode(), 0);
-  microLinnPerSplitSettingsLinked[6] = microLinnIsLinked(Split[LEFT].microLinn.hammerOnZone, Split[RIGHT].microLinn.hammerOnZone, 10);
-  microLinnPerSplitSettingsLinked[5] = microLinnIsLinked(Split[LEFT].microLinn.hammerOnWait, Split[RIGHT].microLinn.hammerOnWait, 0);
+  microLinnPerSplitSettingsLinked[6] = microLinnIsLinked(Split[LEFT].microLinn.hammerOnMode(), Split[RIGHT].microLinn.hammerOnMode(), 0);
+  microLinnPerSplitSettingsLinked[5] = microLinnIsLinked(Split[LEFT].microLinn.hammerOnZone, Split[RIGHT].microLinn.hammerOnZone, 10);
+  microLinnPerSplitSettingsLinked[4] = microLinnIsLinked(Split[LEFT].microLinn.hammerOnWait, Split[RIGHT].microLinn.hammerOnWait, 0);
   microLinnPerSplitSettingsLinked[3] = microLinnIsLinked(Split[LEFT].microLinn.showCustomLEDs, Split[RIGHT].microLinn.showCustomLEDs, 0);
   microLinnPerSplitSettingsLinked[2] = microLinnIsLinked(Split[LEFT].microLinn.pressureRelease, Split[RIGHT].microLinn.pressureRelease, 0);
   microLinnPerSplitSettingsLinked[1] = microLinnIsLinked(Split[LEFT].microLinn.liftHold, Split[RIGHT].microLinn.liftHold, MICROLINN_DEFAULT_LIFT_HOLD);
