@@ -125,12 +125,6 @@ firmware global and function. `desktop/smoke.cpp` is the default one; others are
 checkout running `fw.py`, and only the sketch comes from `--ref`, so two versions of the firmware are
 always compared on the same hardware model.
 
-A harness sees what the firmware sends through hooks in `desktop/hal.h` (the UART's bytes, the LEDs'),
-and gives it serial input with `hal::uartInject()`. The firmware waits for serial input in busy-waits
-that never return to the harness, so a harness that answers it as a host would (a bridge to a real
-serial port, for a tool that talks to the LinnStrument) supplies the bytes from `hal::setUartRxPoll()`,
-which is called whenever the firmware finds none waiting.
-
 ## Replays
 
 ```bash

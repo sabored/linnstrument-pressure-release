@@ -60,11 +60,6 @@ typedef void (*UartTxHook)(uint64_t writtenNs, uint64_t wireStartNs, uint8_t val
 void setUartTxHook(UartTxHook hook, void* user);
 void uartInject(const uint8_t* data, size_t n);   // bytes for the firmware to receive (MIDI in, serial)
 uint32_t uartBaud();                               // 0 until the firmware calls Serial.begin()
-// Called whenever the firmware looks for a received byte and none is waiting, also inside its serial
-// busy-waits, which never return to the harness: a harness that bridges a real serial port supplies
-// bytes there with uartInject(). Unset, nothing changes.
-typedef void (*UartRxPoll)(void* user);
-void setUartRxPoll(UartRxPoll poll, void* user);
 
 // ---- LEDs
 // The firmware refreshes one LED column at a time over SPI (refreshLedColumn()): the column's address,

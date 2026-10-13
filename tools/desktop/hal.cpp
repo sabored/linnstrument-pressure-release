@@ -93,8 +93,6 @@ static std::deque<uint64_t> g_ringLeaveNs;  // for bytes still in the ring buffe
 static std::deque<uint8_t> g_rx;
 static UartTxHook g_txHook = NULL;
 static void* g_txUser = NULL;
-static UartRxPoll g_rxPoll = NULL;
-static void* g_rxUser = NULL;
 
 static uint64_t byteTimeNs() {
   return g_baud ? (uint64_t)10 * 1000000000ULL / g_baud : 0;   // start bit, 8 data bits, stop bit
@@ -137,15 +135,6 @@ void uartInject(const uint8_t* data, size_t n) {
 }
 
 uint32_t uartBaud() { return g_baud; }
-
-void setUartRxPoll(UartRxPoll poll, void* user) {
-  g_rxPoll = poll;
-  g_rxUser = user;
-}
-
-static void uartRxPoll() {
-  if (g_rx.empty() && g_rxPoll) g_rxPoll(g_rxUser);
-}
 
 // ---- flash
 static const size_t FLASH_SIZE = 0x40000;
@@ -439,17 +428,10 @@ void UARTClass::begin(const uint32_t dwBaudRate) {
   g_ringLeaveNs.clear();
 }
 void UARTClass::end(void) { g_baud = 0; }
-int UARTClass::available(void) {
-  uartRxPoll();
-  return (int)g_rx.size();
-}
+int UARTClass::available(void) { return (int)g_rx.size(); }
 int UARTClass::availableForWrite(void) { return uartAvailableForWrite(); }
-int UARTClass::peek(void) {
-  uartRxPoll();
-  return g_rx.empty() ? -1 : g_rx.front();
-}
+int UARTClass::peek(void) { return g_rx.empty() ? -1 : g_rx.front(); }
 int UARTClass::read(void) {
-  uartRxPoll();
   if (g_rx.empty()) return -1;
   uint8_t b = g_rx.front();
   g_rx.pop_front();
