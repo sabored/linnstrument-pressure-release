@@ -4154,7 +4154,7 @@ void microLinnPaintGlobalSettings(boolean scrollLabel) {
       case 4: microLinnScrollSmall("LOCATING CC #1"); break;
       case 3: microLinnScrollSmall("LOCATING CC #2"); break;
       case 2: microLinnScrollSmall("PIANO FADE IN SECONDS"); break;
-      case 1: microLinnScrollSmall("WICKI-HAYDEN SLIDES"); break;
+      case 1: microLinnScrollSmall("COLUMN SLIDE DIVISIONS"); break;
     }
     microLinnPaintConfigButtons();
     microLinnPaintGlobalSettingsButtons();
@@ -4205,7 +4205,7 @@ void microLinnPaintGlobalSettings(boolean scrollLabel) {
       microLinnPaintDecimal(globalColor, Global.microLinn.pianoFade, 1);           // tenths of a second
       break;
     case 1:
-      smallfont_draw_string(2, 1, Global.microLinn.wickiHaydenSlides ? "ON" : "OFF", globalColor, false);
+      paintNumericDataDisplay(globalColor, Global.microLinn.columnSlideDivisions(), 0, false);
       break;
   }
 }
@@ -4254,7 +4254,7 @@ void microLinnHandleGlobalSettingsNewTouch() {
       handleNumericDataNewTouchCol(Global.microLinn.pianoFade, 1, 255, true);          // in tenths of a second
       break;
     case 1:
-      handleNumericDataNewTouchCol(Global.microLinn.wickiHaydenSlides);
+      handleNumericDataNewTouchCol(Global.microLinn.columnSlideDivisionsMinus1, 0, MICROLINN_MAX_COL_OFFSET - 1, true);   // shown plus 1
       break;
   }
   updateDisplay(); 
@@ -5070,7 +5070,7 @@ void sendMicroLinnNrpnParameter(int parameter, int channel) {
     case 1203: value = Global.microLinn.locatingCC1; break;
     case 1204: value = Global.microLinn.locatingCC2; break;
     case 1205: value = Global.microLinn.pianoFade; break;
-    case 1206: value = Global.microLinn.wickiHaydenSlides ? 1 : 0; break;
+    case 1206: value = Global.microLinn.columnSlideDivisions(); break;
     case 1207: value = Device.ignoreMidiClock ? 1 : 0; break;
     case 1250: value = Global.microLinn.EDO; break;
     case 1251: value = Global.microLinn.useRainbow ? 1 : 0; break;
@@ -5142,7 +5142,7 @@ void receivedMicroLinnNrpn(int parameter, int value) {
     case 1203: if (inRange(value, 0, 127) || value == 255) Global.microLinn.locatingCC1 = value; break;
     case 1204: if (inRange(value, 0, 127) || value == 255) Global.microLinn.locatingCC2 = isLinn200() ? value : 255; break;
     case 1205: if (inRange(value, 1, 255)) Global.microLinn.pianoFade = value; break;
-    case 1206: if (inRange(value, 0, 1))   Global.microLinn.wickiHaydenSlides = (value == 1); break;
+    case 1206: if (inRange(value, 1, c))   Global.microLinn.setColumnSlideDivisions(value); break;
     case 1207:                                                        // the MIDI clock source, 0 = EXT, 1 = INT
       if (inRange(value, 0, 1) && Device.ignoreMidiClock != (value == 1)) {
         Device.ignoreMidiClock = (value == 1);
@@ -6061,7 +6061,8 @@ void microLinnImportGlobal(byte data1, byte data2, unsigned short i, byte preset
       initMicroLinnPressureGlobal(g->microLinn);                             // 72.1 and 72.2 have reserved bytes here
     }
   } else if (i == 306) {
-    if (microLinnImportMLversion >= 3 && microLinnInRange(data1, 0, 1)) g->microLinn.wickiHaydenSlides = (data1 == 1);
+    if (microLinnImportMLversion >= 3 && microLinnInRange(data1, 0, MICROLINN_MAX_COL_OFFSET - 1))    // divisions minus 1
+      g->microLinn.columnSlideDivisionsMinus1 = data1;
     // ignore byte 307 = reserved
   }
 }

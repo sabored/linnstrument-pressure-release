@@ -2438,7 +2438,7 @@ void initMicroLinnData() {
 }
 
 // 72.3 put Pressure Release, Lift Hold and Reattach Glide in MicroLinnSplit's reserved bytes, and Piano Fade and
-// Wicki-Hayden Slides in MicroLinnGlobal's, so settings from before 72.3 get their defaults, whatever those bytes held
+// Column Slide Divisions in MicroLinnGlobal's, so settings from before 72.3 get their defaults, whatever those bytes held
 void initMicroLinnPressureSplit(MicroLinnSplit& s) {
   s.pressureRelease = 0;                                       // OFF
   s.liftHold = MICROLINN_DEFAULT_LIFT_HOLD;
@@ -2447,7 +2447,7 @@ void initMicroLinnPressureSplit(MicroLinnSplit& s) {
 
 void initMicroLinnPressureGlobal(MicroLinnGlobal& g) {
   g.pianoFade = MICROLINN_DEFAULT_PIANO_FADE;
-  g.wickiHaydenSlides = false;
+  g.setColumnSlideDivisions(MICROLINN_DEFAULT_COLUMN_SLIDE_DIVISIONS);
 }
 
 void initMicroLinnPressureSettings(Configuration* t) {         // the current settings and the 6 memories

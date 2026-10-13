@@ -854,6 +854,7 @@ enum SustainBehavior {
 };
 
 const byte MICROLINN_DEFAULT_PIANO_FADE = 100;    // 10 seconds, MicroLinnGlobal.pianoFade is in tenths of a second
+const byte MICROLINN_DEFAULT_COLUMN_SLIDE_DIVISIONS = 1;   // a slide comes to rest on the pads' own notes
 
 struct MicroLinnGlobal {
   /********************
@@ -872,6 +873,10 @@ struct MicroLinnGlobal {
   inline void setUseRainbow(bool b)  {bitWrite(packedByte2, 6, b);}
   inline void setDotsCarryOver()     {bitWrite(packedByte2, 7, b);}
   ***********************/
+  // Column Slide Divisions is stored minus 1, so that 0 is its default, 1, and settings saved when this byte was
+  // an on/off switch (Wicki-Hayden Slides) read OFF as 1 and ON as 2
+  inline byte columnSlideDivisions()          {return columnSlideDivisionsMinus1 + 1;}
+  inline void setColumnSlideDivisions(byte b) {columnSlideDivisionsMinus1 = b - 1;}
   byte drumPadMode;                          // creates an array of 2x3 (if 1) or 3x3 (if 2) drum pads, array is 2x7, but only 2x5 if 3x3 on the 128
   byte locatingCC1;                          // CC to send with row/column location for each note-on in cols 1-16 or cols 17-25...
   byte locatingCC2;                          // ...ranges from 0 to 127, 255 = OFF
@@ -891,7 +896,7 @@ struct MicroLinnGlobal {
   short guitarTuning[MAXROWS];               // independent of Global.guitarTuning, interval in edosteps from the string below it, can be negative, [0] is DIA/CHRO
   boolean dotsCarryOver;                     // red SAME or BLNK dots carry over to the other split
   byte pianoFade;                            // in tenths of a second, a PRES Piano pedal's fade from full level to silence, 1..255
-  boolean wickiHaydenSlides;                 // slides and vibrato move in semitones when the column offset is above 1
+  byte columnSlideDivisionsMinus1;           // the equal steps a pad's interval is divided into where a slide comes to rest, minus 1, 0..9
   byte reserved3;                            // reserved for future use, 1 byte per empty menu row
 //byte padding;                              // added by the compiler, makes the MicroLinnGlobal struct an even number of bytes
 };

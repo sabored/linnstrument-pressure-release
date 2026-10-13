@@ -344,7 +344,7 @@ void loadSettingsFromPreset(byte p) {
     Global.microLinn.locatingCC1   = config.preset[p].global.microLinn.locatingCC1;
     Global.microLinn.locatingCC2   = config.preset[p].global.microLinn.locatingCC2;
     Global.microLinn.pianoFade         = config.preset[p].global.microLinn.pianoFade;           // not microtonal
-    Global.microLinn.wickiHaydenSlides = config.preset[p].global.microLinn.wickiHaydenSlides;
+    Global.microLinn.columnSlideDivisionsMinus1 = config.preset[p].global.microLinn.columnSlideDivisionsMinus1;
     for (byte side = 0; side < NUMSPLITS; ++side) {
       memcpy(&Split[side], &config.preset[p].split[side], sizeof(SplitSettings) - sizeof(MicroLinnSplit));
       // only load the column and per-split row offsets if they are not OFF (such offsets are often related to the edo)
