@@ -265,7 +265,7 @@ const unsigned long LED_ARRAY_SIZE = (MAX_LED_LAYERS+1) * LED_LAYER_SIZE;
 // (we would rather have used 128, but the updater interprets version as a signed character type,
 // and rejects negative version numbers.)
 #define MICROLINN_VERSION_OFFSET 56
-#define MICROLINN_MLVERSION 2                     // Device.microLinn.MLversion, the 2 in 72.2
+#define MICROLINN_MLVERSION 3                     // Device.microLinn.MLversion, the 3 in 72.3
 
 /*************************************** CONVENIENCE MACROS **************************************/
 
@@ -638,6 +638,9 @@ enum SequencerDirection {
   sequencerPingPong
 };
 
+const byte MICROLINN_MAX_LIFT_HOLD = 10;          // 25%, MicroLinnSplit.liftHold is in 2.5% steps
+const byte MICROLINN_DEFAULT_LIFT_HOLD = 5;       // 12.5%
+
 struct MicroLinnSplit {
   // pullOfMode: 0 = velocity is 2nd note's noteOff velocity, 1 = 1st noteOn veloc, 2 = 2nd noteOn veloc, 3 = average them
   inline byte hammerOnMode()          {return (hammerOnModes & B00000011);}
@@ -676,9 +679,9 @@ struct MicroLinnSplit {
   byte ccForLowRowX;                      // the X' CC in XYZ joystick mode, 128 = Channel Pressure, 255 = OFF
   byte ccForLowRowY;                      // the Y' CC in XYZ (don't confuse Split.microLinn.ccForLowRowY = Y' with Split.ccForLowRowY = Y)
   byte flags;                             // Byxwrhhqs, s = sendX, q = quantize, hh = quantize hold, r = pitch reset, yxw = joystick WXY CCs
-  byte reserved1;                         // reserved for future use, 1 byte per empty menu row
-  byte reserved2;                         //    "
-  byte reserved3;                         //    "
+  byte pressureRelease;                   // in tens of ms, the time a note at full level takes to fade to silence after a lift, 0..255, 0 = OFF
+  byte liftHold;                          // in 2.5% steps, the sudden pressure drop that holds a lifting note's level, 0..10, 0 = OFF
+  byte reattachGlide;                     // in tens of ms, pitch and Y glide to a re-press that takes over a note, 0..255, 0 = OFF
 //boolean onlyInitialY;                   // possible new feature, only send Y-data from the first strike, doesn't apply to relative mode
 };
 
@@ -844,6 +847,8 @@ enum SustainBehavior {
   sustainLatch
 };
 
+const byte MICROLINN_DEFAULT_PIANO_FADE = 100;    // 10 seconds, MicroLinnGlobal.pianoFade is in tenths of a second
+
 struct MicroLinnGlobal {
   /********************
   inline byte drumPadMode()          {return (packedByte1 & B00000011);}
@@ -879,9 +884,9 @@ struct MicroLinnGlobal {
 //signed char largeEDOoffset[MICROLINN_MAX_EDO];  // ranges -128..127, edosteps from nearest large-edo approximation
   short guitarTuning[MAXROWS];               // independent of Global.guitarTuning, interval in edosteps from the string below it, can be negative, [0] is DIA/CHRO
   boolean dotsCarryOver;                     // red SAME or BLNK dots carry over to the other split
-  byte reserved1;                            // reserved for future use, 1 byte per empty menu row
-  byte reserved2;                            //    "
-  byte reserved3;                            //    "
+  byte pianoFade;                            // in tenths of a second, a PRES Piano pedal's fade from full level to silence, 1..255
+  boolean wickiHaydenSlides;                 // slides and vibrato move in semitones when the column offset is above 1
+  byte reserved3;                            // reserved for future use, 1 byte per empty menu row
 //byte padding;                              // added by the compiler, makes the MicroLinnGlobal struct an even number of bytes
 };
 

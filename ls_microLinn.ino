@@ -19,7 +19,7 @@ But a function that has "microLinn" not at the beginning is called elsewhere, e.
 The microLinn software version number is the usual 6-digit version number plus our 3-digit number
 This is the number that the Global Settings OS VERS button shows, e.g. 234.072.001
 The microLinn data structure version number is Device.version (16 as of late 2025) plus an offset of 56, making 72,
-plus Device.microLinn.MLversion = 2 (MICROLINN_MLVERSION), making 72.2
+plus Device.microLinn.MLversion = 3 (MICROLINN_MLVERSION), making 72.3
 This is the number ls_extstorage.ino uses to migrate user settings from one OS version to the next
 
 MicroLinn includes KVR forum member teknico's channel pressure fix, many thanks to him! Search for "teknico" to see his code
@@ -2443,6 +2443,7 @@ void initializeMicroLinn() {
   Global.microLinn.guitarTuning[5] = 5;
   Global.microLinn.guitarTuning[6] = 4;
   Global.microLinn.guitarTuning[7] = 5;
+  initMicroLinnPressureGlobal(Global.microLinn);
 
   for (byte side = 0; side < NUMSPLITS; ++side) {
     Split[side].microLinn.colOffset = 1;
@@ -2462,6 +2463,7 @@ void initializeMicroLinn() {
     Split[side].microLinn.ccForLowRowX = 255;
     Split[side].microLinn.ccForLowRowY = 255;
     Split[side].microLinn.flags = 0;                        // alternate sendX/quant/hold = OFF, joystick reset W=0, X=0, Y=0
+    initMicroLinnPressureSplit(Split[side].microLinn);
   }
 
   for (byte p = 0; p < NUMPRESETS; ++p) {
@@ -2646,10 +2648,13 @@ void setupMicroLinn() {                              // runs when the Linnstrume
   microLinnPerSplitSettingsLinked[6] = microLinnIsLinked(Split[LEFT].microLinn.hammerOnZone, Split[RIGHT].microLinn.hammerOnZone, 10);
   microLinnPerSplitSettingsLinked[5] = microLinnIsLinked(Split[LEFT].microLinn.hammerOnWait, Split[RIGHT].microLinn.hammerOnWait, 0);
   microLinnPerSplitSettingsLinked[3] = microLinnIsLinked(Split[LEFT].microLinn.showCustomLEDs, Split[RIGHT].microLinn.showCustomLEDs, 0);
+  microLinnPerSplitSettingsLinked[2] = microLinnIsLinked(Split[LEFT].microLinn.pressureRelease, Split[RIGHT].microLinn.pressureRelease, 0);
+  microLinnPerSplitSettingsLinked[1] = microLinnIsLinked(Split[LEFT].microLinn.liftHold, Split[RIGHT].microLinn.liftHold, MICROLINN_DEFAULT_LIFT_HOLD);
   microLinnPerSplitXenSettingsLinked[7] = microLinnIsLinked(Split[LEFT].microLinn.condensedBendPerPad, Split[RIGHT].microLinn.condensedBendPerPad, 0);
   microLinnPerSplitXenSettingsLinked[6] = microLinnIsLinked(Split[LEFT].microLinn.defaultLayout, Split[RIGHT].microLinn.defaultLayout, 0);
   microLinnPerSplitXenSettingsLinked[5] = microLinnIsLinked(Split[LEFT].microLinn.tuningTable, Split[RIGHT].microLinn.tuningTable, 0);
   microLinnPerSplitXenSettingsLinked[4] = microLinnIsLinked(Split[LEFT].microLinn.groupingCC, Split[RIGHT].microLinn.groupingCC, 255);
+  microLinnPerSplitXenSettingsLinked[3] = microLinnIsLinked(Split[LEFT].microLinn.reattachGlide, Split[RIGHT].microLinn.reattachGlide, 0);
 
   calcMicroLinnTuning();
   for (byte side = 0; side < NUMSPLITS; ++side) {
@@ -3655,6 +3660,18 @@ void microLinn_draw_string (byte col, byte row, const char* str, const char* str
   else              condfont_draw_string(col, row, str2, color, erase);
 }
 
+// draws OFF for 0, else the value with a decimal point and 1 or 2 decimals, e.g. 120 hundredths as 1.20
+void microLinnPaintDecimal (byte color, unsigned short value, byte decimals) {
+  if (value == 0) {
+    smallfont_draw_string(2, 1, "OFF", color, false);
+    return;
+  }
+  char str[8];
+  if (decimals == 2) sniprintf(str, sizeof(str), "%d.%02d", value / 100, value % 100);
+  else               sniprintf(str, sizeof(str), "%d.%d", value / 10, value % 10);
+  condfont_draw_string(2, 1, str, color, false);                // condensed, so 25.5 fits on a Linn128
+}
+
 // scrolls "      text     text     text" the way small_scroll_text() would, but draws the three copies one
 // after the other rather than building that string, which took a 200-byte buffer on the stack
 // this mirrors font_scroll_text() in ls_font.ino, and must follow any change made to it
@@ -3925,8 +3942,8 @@ void microLinnHandleRowOffsetNewTouch() {
 }
 
 void microLinnPaintPerSplitSettingsButtons() {
-  for (byte row = 3; row <= 7; ++row) {
-    byte color = (row >= 4 && row <= 6) ? COLOR_LIME : COLOR_GREEN;
+  for (byte row = 1; row <= 7; ++row) {
+    byte color = ((row >= 4 && row <= 6) || row <= 2) ? COLOR_LIME : COLOR_GREEN;
     if (row == microLinnPerSplitSettingsRowNum) color = COLOR_CYAN;
     setLed(1, row, color, cellOn);
   }
@@ -3945,6 +3962,8 @@ void microLinnPaintPerSplitSettings(boolean scrollLabel) {
       case 5: microLinnScrollSmall ("HAMMER-ON ZONE IN SEMITONES"); break;
       case 4: microLinnScrollSmall ("HAMMER-ON WAIT IN MILLISECONDS"); break;
       case 3: microLinnScrollSmall ("SHOW CUSTOM LIGHT PATTERN"); break;
+      case 2: microLinnScrollSmall ("PRESSURE RELEASE IN SECONDS"); break;
+      case 1: microLinnScrollSmall ("LIFT HOLD IN PERCENT"); break;
     }
     microLinnPaintConfigButtons();
     microLinnPaintShowSplitSelection(microLinnPerSplitSettingsLinked[microLinnPerSplitSettingsRowNum]);
@@ -3998,23 +4017,27 @@ void microLinnPaintPerSplitSettings(boolean scrollLabel) {
       if      (Split[side].microLinn.showCustomLEDs == 5) smallfont_draw_string(12, 1, "'", color, false);     // apostrophe
       else if (Split[side].microLinn.showCustomLEDs >= 4) smallfont_draw_string( 6, 1, "'", color, false);
       break;
+    case 2:
+      microLinnPaintDecimal(color, Split[side].microLinn.pressureRelease, 2);        // tens of ms shown as seconds
+      break;
+    case 1:
+      microLinnPaintDecimal(color, 25 * Split[side].microLinn.liftHold, 1);          // 2.5% steps
+      break;
   }
 }
 
 void microLinnHandlePerSplitSettingsNewTouch() {
   microLinnPerSplitSettingsNowScrolling = false;
   if (sensorCol == 1) {
-    if (sensorRow >= 3 || sensorRow == 0) {
-      microLinnPerSplitSettingsRowNum = sensorRow;
-      updateDisplay(); 
-    }
+    microLinnPerSplitSettingsRowNum = sensorRow;                                     // row 0 selects nothing
+    updateDisplay(); 
     return;
   }
 
   byte side = Global.currentPerSplit;
   byte otherSide = 1 - side;
   microLinnHandleShowSplit(microLinnPerSplitSettingsLinked[microLinnPerSplitSettingsRowNum]);
-  if (microLinnPerSplitSettingsRowNum < 3)
+  if (microLinnPerSplitSettingsRowNum == 0)
     microLinnPerSplitSettingsLinked[microLinnPerSplitSettingsRowNum] = false;        // don't link if there's nothing to link
 
   switch (microLinnPerSplitSettingsRowNum) {
@@ -4058,12 +4081,22 @@ void microLinnHandlePerSplitSettingsNewTouch() {
       if (microLinnPerSplitSettingsLinked[3]) 
         Split[otherSide].microLinn.showCustomLEDs = Split[side].microLinn.showCustomLEDs;
       break;
+    case 2:
+      handleNumericDataNewTouchCol(Split[side].microLinn.pressureRelease, 0, 255, true);      // in tens of ms
+      if (microLinnPerSplitSettingsLinked[2]) 
+        Split[otherSide].microLinn.pressureRelease = Split[side].microLinn.pressureRelease;
+      break;
+    case 1:
+      handleNumericDataNewTouchCol(Split[side].microLinn.liftHold, 0, MICROLINN_MAX_LIFT_HOLD, true);
+      if (microLinnPerSplitSettingsLinked[1]) 
+        Split[otherSide].microLinn.liftHold = Split[side].microLinn.liftHold;
+      break;
   }
   updateDisplay(); 
 }
 
 void microLinnHandlePerSplitSettingsHold() {
-  if (sensorCol == 1 && sensorRow >= 3 &&                                      // long-press col 1
+  if (sensorCol == 1 && sensorRow >= 1 &&                                      // long-press col 1
       isCellPastSensorHoldWait() && 
       !microLinnPerSplitSettingsNowScrolling) {     
     microLinnPerSplitSettingsNowScrolling = true;
@@ -4072,12 +4105,17 @@ void microLinnHandlePerSplitSettingsHold() {
 }
 
 void microLinnHandlePerSplitSettingsRelease() {                                // short-press col 1
-  if (sensorCol == 1 && sensorRow >= 3) updateDisplay();
+  if (sensorCol == 1 && sensorRow >= 1) updateDisplay();
+}
+
+boolean microLinnIsGlobalSettingsRow(byte row) {                     // locating CC #2 (row 3) is only on a Linn200
+  return row >= 1 && (row != 3 || isLinn200());
 }
 
 void microLinnPaintGlobalSettingsButtons() {
-  for (byte row = (isLinn200() ? 3 : 4); row <= 7; ++row) {
-    byte color = (row <= 4) ? COLOR_LIME : COLOR_GREEN;
+  for (byte row = 1; row <= 7; ++row) {
+    if (!microLinnIsGlobalSettingsRow(row)) continue;
+    byte color = (row == 3 || row == 4) ? COLOR_LIME : COLOR_GREEN;
     if (row == microLinnGlobalSettingsRowNum) color = COLOR_CYAN;
     setLed(1, row, color, cellOn);
   }
@@ -4115,6 +4153,8 @@ void microLinnPaintGlobalSettings(boolean scrollLabel) {
       case 5: microLinnScrollSmall("ALLOW IMPORTING"); break;
       case 4: microLinnScrollSmall("LOCATING CC #1"); break;
       case 3: microLinnScrollSmall("LOCATING CC #2"); break;
+      case 2: microLinnScrollSmall("PIANO FADE IN SECONDS"); break;
+      case 1: microLinnScrollSmall("WICKI-HAYDEN SLIDES"); break;
     }
     microLinnPaintConfigButtons();
     microLinnPaintGlobalSettingsButtons();
@@ -4161,14 +4201,19 @@ void microLinnPaintGlobalSettings(boolean scrollLabel) {
         paintNumericDataDisplay(locatingColor, Global.microLinn.locatingCC2, 0, false);
       }
       break;
+    case 2:
+      microLinnPaintDecimal(globalColor, Global.microLinn.pianoFade, 1);           // tenths of a second
+      break;
+    case 1:
+      smallfont_draw_string(2, 1, Global.microLinn.wickiHaydenSlides ? "ON" : "OFF", globalColor, false);
+      break;
   }
 }
 
 void microLinnHandleGlobalSettingsNewTouch() {
   microLinnGlobalSettingsNowScrolling = false;
   if (sensorCol == 1) {
-    byte row = isLinn200() ? 3 : 4;
-    if (sensorRow >= row || sensorRow == 0) {
+    if (microLinnIsGlobalSettingsRow(sensorRow) || sensorRow == 0) {
       microLinnGlobalSettingsRowNum = sensorRow;
       updateDisplay(); 
     }
@@ -4205,13 +4250,18 @@ void microLinnHandleGlobalSettingsNewTouch() {
       Global.microLinn.locatingCC2 = CC == -1 ? 255 : CC;
       updateDisplay();
       break;
+    case 2:
+      handleNumericDataNewTouchCol(Global.microLinn.pianoFade, 1, 255, true);          // in tenths of a second
+      break;
+    case 1:
+      handleNumericDataNewTouchCol(Global.microLinn.wickiHaydenSlides);
+      break;
   }
   updateDisplay(); 
 }
 
 void microLinnHandleGlobalSettingsHold() {
-  byte row = isLinn200() ? 3 : 4;
-  if (sensorCol == 1 && sensorRow >= row &&                                  // long-press col 1
+  if (sensorCol == 1 && microLinnIsGlobalSettingsRow(sensorRow) &&           // long-press col 1
       isCellPastSensorHoldWait() && 
       !microLinnGlobalSettingsNowScrolling) {     
     microLinnGlobalSettingsNowScrolling = true;
@@ -4220,8 +4270,7 @@ void microLinnHandleGlobalSettingsHold() {
 }
 
 void microLinnHandleGlobalSettingsRelease() {                                // short-press col 1
-  byte row = isLinn200() ? 3 : 4;
-  if (sensorCol == 1 && sensorRow >= row) updateDisplay(); 
+  if (sensorCol == 1 && microLinnIsGlobalSettingsRow(sensorRow)) updateDisplay(); 
 }
 
 void microLinnPaintEDO() {
@@ -4422,7 +4471,7 @@ void handleMicroLinnFretboardEditorNewTouch() {
 }
 
 void microLinnPaintPerSplitXenSettingsButtons() {
-  for (byte row = 4; row <= 7; ++row) { 
+  for (byte row = 3; row <= 7; ++row) { 
     byte color = (row == 4 || row == 5) ? COLOR_LIME : COLOR_GREEN;
     if (row == microLinnPerSplitXenSettingsRowNum) color = COLOR_CYAN;
     setLed(1, row, color, cellOn);
@@ -4440,6 +4489,7 @@ void microLinnPaintPerSplitXenSettings(boolean scrollLabel) {
       case 6: microLinnScrollSmall("DEFAULT LAYOUT BOSANQUET ACCORDION WICKI-HAYDEN ARRAY-MBIRA"); break;
       case 5: microLinnScrollSmall("TUNING TABLE + GROUPING + RECHANNELING"); break;
       case 4: microLinnScrollSmall("GROUPING CC"); break;
+      case 3: microLinnScrollSmall("REATTACH GLIDE IN SECONDS"); break;
     }
     microLinnPaintConfigButtons();
     microLinnPaintShowSplitSelection(microLinnPerSplitXenSettingsLinked[microLinnPerSplitXenSettingsRowNum]);
@@ -4500,13 +4550,16 @@ void microLinnPaintPerSplitXenSettings(boolean scrollLabel) {
         paintNumericDataDisplay(color, Split[side].microLinn.groupingCC, isLinn200() ? 0 : 2, !isLinn200());
       }
       break;
+    case 3:
+      microLinnPaintDecimal(color, Split[side].microLinn.reattachGlide, 2);           // tens of ms shown as seconds
+      break;
   }
 }
 
 void microLinnHandlePerSplitXenSettingsNewTouch() {
   microLinnPerSplitXenSettingsNowScrolling = false;
   if (sensorCol == 1) {
-    if (sensorRow >= 4 || sensorRow == 0) {
+    if (sensorRow >= 3 || sensorRow == 0) {
       microLinnPerSplitXenSettingsRowNum = sensorRow;
       updateDisplay(); 
     }
@@ -4519,7 +4572,7 @@ void microLinnHandlePerSplitXenSettingsNewTouch() {
     handleShowSplit();
     updateDisplay();
   } else microLinnHandleShowSplit(microLinnPerSplitXenSettingsLinked[microLinnPerSplitXenSettingsRowNum]);
-  if (microLinnPerSplitXenSettingsRowNum < 4)
+  if (microLinnPerSplitXenSettingsRowNum < 3)
     microLinnPerSplitXenSettingsLinked[microLinnPerSplitXenSettingsRowNum] = false;        // don't link if there's nothing to link
 
   byte colOffset = Split[side].microLinn.colOffset;
@@ -4573,12 +4626,17 @@ void microLinnHandlePerSplitXenSettingsNewTouch() {
       if (microLinnPerSplitXenSettingsLinked[4])
         Split[otherSide].microLinn.groupingCC = Split[side].microLinn.groupingCC;
       break;
+    case 3:
+      handleNumericDataNewTouchCol(Split[side].microLinn.reattachGlide, 0, 255, true);       // in tens of ms
+      if (microLinnPerSplitXenSettingsLinked[3])
+        Split[otherSide].microLinn.reattachGlide = Split[side].microLinn.reattachGlide;
+      break;
   }
   updateDisplay(); 
 }
 
 void microLinnHandlePerSplitXenSettingsHold() {
-  if (sensorCol == 1 && sensorRow >= 4 &&                                         // long-press col 1
+  if (sensorCol == 1 && sensorRow >= 3 &&                                         // long-press col 1
       isCellPastSensorHoldWait() && 
       !microLinnPerSplitXenSettingsNowScrolling) {     
     microLinnPerSplitXenSettingsNowScrolling = true;
@@ -4587,7 +4645,7 @@ void microLinnHandlePerSplitXenSettingsHold() {
 }
 
 void microLinnHandlePerSplitXenSettingsRelease() {                                // short-press col 1
-  if (sensorCol == 1 && sensorRow >= 4) updateDisplay();
+  if (sensorCol == 1 && sensorRow >= 3) updateDisplay();
 }
 
 void microLinnSetUpRechannelling(byte side) {
@@ -4998,6 +5056,9 @@ void sendMicroLinnNrpnParameter(int parameter, int channel) {
     case 1014: value = Split[side].microLinn.altPitchCorrectQuantize() ? 1 : 0; break;
     case 1015: value = Split[side].microLinn.altPitchCorrectHold(); break;
     case 1016: value = Split[side].microLinn.altPitchResetOnRelease() ? 1 : 0; break;
+    case 1017: value = Split[side].microLinn.pressureRelease; break;
+    case 1018: value = Split[side].microLinn.liftHold; break;
+    case 1019: value = Split[side].microLinn.reattachGlide; break;
     case 1050: value = Split[side].microLinn.condensedBendPerPad; break;
     case 1051: value = Split[side].microLinn.defaultLayout; break;
     case 1052: value = Split[side].microLinn.tuningTable; break;
@@ -5008,6 +5069,9 @@ void sendMicroLinnNrpnParameter(int parameter, int channel) {
     case 1202: value = Global.microLinn.dotsCarryOver ? 1 : 0; break;
     case 1203: value = Global.microLinn.locatingCC1; break;
     case 1204: value = Global.microLinn.locatingCC2; break;
+    case 1205: value = Global.microLinn.pianoFade; break;
+    case 1206: value = Global.microLinn.wickiHaydenSlides ? 1 : 0; break;
+    case 1207: value = Device.ignoreMidiClock ? 1 : 0; break;
     case 1250: value = Global.microLinn.EDO; break;
     case 1251: value = Global.microLinn.useRainbow ? 1 : 0; break;
     case 1252: value = Global.microLinn.anchorCol; break;
@@ -5060,6 +5124,9 @@ void receivedMicroLinnNrpn(int parameter, int value) {
     case 1014: if (inRange(value, 0, 1))   Split[side].microLinn.setAltPitchCorrectQuantize(value == 1); break;
     case 1015: if (inRange(value, 0, 3))   Split[side].microLinn.setAltPitchCorrectHold(value); break;
     case 1016: if (inRange(value, 0, 1))   Split[side].microLinn.setAltPitchResetOnRelease(value == 1); break;
+    case 1017: if (inRange(value, 0, 255)) Split[side].microLinn.pressureRelease = value; break;
+    case 1018: if (inRange(value, 0, MICROLINN_MAX_LIFT_HOLD)) Split[side].microLinn.liftHold = value; break;
+    case 1019: if (inRange(value, 0, 255)) Split[side].microLinn.reattachGlide = value; break;
     case 1050: if (inRange(value, 0, 55))  Split[side].microLinn.condensedBendPerPad = value; break;
     case 1051: if (inRange(value, 0, 7))   Split[side].microLinn.defaultLayout = value; break;
     case 1052: if (inRange(value, 0, 3))   Split[side].microLinn.tuningTable = value; break;
@@ -5074,6 +5141,14 @@ void receivedMicroLinnNrpn(int parameter, int value) {
     case 1202: if (inRange(value, 0, 1))   Global.microLinn.dotsCarryOver = (value == 1); break;
     case 1203: if (inRange(value, 0, 127) || value == 255) Global.microLinn.locatingCC1 = value; break;
     case 1204: if (inRange(value, 0, 127) || value == 255) Global.microLinn.locatingCC2 = isLinn200() ? value : 255; break;
+    case 1205: if (inRange(value, 1, 255)) Global.microLinn.pianoFade = value; break;
+    case 1206: if (inRange(value, 0, 1))   Global.microLinn.wickiHaydenSlides = (value == 1); break;
+    case 1207:                                                        // the MIDI clock source, 0 = EXT, 1 = INT
+      if (inRange(value, 0, 1) && Device.ignoreMidiClock != (value == 1)) {
+        Device.ignoreMidiClock = (value == 1);
+        if (Device.ignoreMidiClock) stopFollowingMidiClock();       // as the clock source screen does
+      }
+      break;
     case 1250: if (inRange(value, 4, 55))  Global.microLinn.EDO = value; break;
     case 1251: if (inRange(value, 0, 1))   Global.microLinn.useRainbow = (value == 1); break;
     case 1252: if (inRange(value, 1, 25))  Global.microLinn.anchorCol = value; break;
@@ -5374,8 +5449,9 @@ void importMicroLinnData(int value) {
 }
 
 boolean microLinnIsCurrentLayout(byte version, byte MLversion) {
-  // 72.1 and 72.2 have the same layout, 72.2 only renumbered the Transpose switches (see microLinnImportedSwitch)
-  return version == Device.version && (MLversion == Device.microLinn.MLversion || MLversion == 1);
+  // 72.1, 72.2 and 72.3 have the same layout: 72.2 renumbered the Transpose switches (see microLinnImportedSwitch),
+  // and 72.3 put settings in bytes that were reserved, which imports from before 72.3 set to their defaults
+  return version == Device.version && MLversion >= 1 && MLversion <= Device.microLinn.MLversion;
 }
 
 unsigned short microLinnImportedSwitch(unsigned short assignment) {
@@ -5678,12 +5754,12 @@ void receiveMicroLinnPolyPressure(byte data1, byte data2, byte channel) {
       }
       break;
 
-    case 13:   // import 1 split = 113 bytes for version 72.1 and 72.2
+    case 13:   // import 1 split = 113 bytes for version 72.1 to 72.3
       if (i == 0) microLinnImportXen = true;
       microLinnImportSplit(data1, data2, i, 0, Global.currentPerSplit);
       break;
 
-    case 14:   // import Global and both Split settings = 596 bytes for version 72.1 and 72.2
+    case 14:   // import Global and both Split settings = 596 bytes for version 72.1 to 72.3
       if (i == 0) microLinnImportXen = true;
       if (i < sizeof(GlobalSettings)) {
         microLinnImportGlobal(data1, data2, i, 0);
@@ -5692,7 +5768,7 @@ void receiveMicroLinnPolyPressure(byte data1, byte data2, byte channel) {
       }
       break;
 
-    case 15:   // import all 6 presets = 3576 bytes for version 72.1 and 72.2
+    case 15:   // import all 6 presets = 3576 bytes for version 72.1 to 72.3
       m = i % sizeof(PresetSettings);                            // m = index into the Nth preset
       n = (i - m) / sizeof(PresetSettings);                      // n = which preset
       if (m == 0) microLinnImportXen = true;                     // reset the flag for each new preset
@@ -5777,7 +5853,7 @@ boolean microLinnInRange (short data, short lo, short hi) {
 }
 
 void microLinnImportDevice(byte data1, byte data2, unsigned short i) {               // don't import calibration data
-  if (i >= 5736) return;                                                             // version 72.1 and 72.2 size is 5736 bytes without calibration
+  if (i >= 5736) return;                                                             // version 72.1 to 72.3 size is 5736 bytes without calibration
   unsigned short number = data1 | (data2 << 8);                                      // LSB first (little-endian)
 
   if (i == 0) {
@@ -5853,10 +5929,10 @@ void microLinnImportDevice(byte data1, byte data2, unsigned short i) {          
   }
 }
 
-void microLinnImportGlobal(byte data1, byte data2, unsigned short i, byte presetNum) {     // version 72.1 and 72.2 size is 307 + 1 byte padding
+void microLinnImportGlobal(byte data1, byte data2, unsigned short i, byte presetNum) {     // version 72.1 to 72.3 size is 307 + 1 byte padding
   if (i < 0 || i >= sizeof(GlobalSettings)) return;
   GlobalSettings *g = (presetNum == 0 ? &Global : &config.preset[presetNum - 1].global);
-  if (i >= 170 && !microLinnImportXen) return;
+  if (i >= 170 && i < 304 && !microLinnImportXen) return;                   // 305-306 aren't microtonal
   unsigned short number = data1 | (data2 << 8);
 
   if (i == 0) {
@@ -5978,8 +6054,15 @@ void microLinnImportGlobal(byte data1, byte data2, unsigned short i, byte preset
     g->microLinn.guitarTuning[(i-288)/2] = n;
     if (i == 302) microLinnCheckGuitarTuning();
   } else if (i == 304) {
-    if (microLinnInRange(data1, 0, 1))   g->microLinn.dotsCarryOver = (data1 == 1);
-    // ignore bytes 305-307 = reserved and byte 308 = padding
+    if (microLinnImportXen && microLinnInRange(data1, 0, 1)) g->microLinn.dotsCarryOver = (data1 == 1);
+    if (microLinnImportMLversion < 3) {
+      initMicroLinnPressureGlobal(g->microLinn);                             // 72.1 and 72.2 have reserved bytes here
+    } else if (microLinnInRange(data2, 1, 255)) {
+      g->microLinn.pianoFade = data2;
+    }
+  } else if (i == 306) {
+    if (microLinnImportMLversion >= 3 && microLinnInRange(data1, 0, 1)) g->microLinn.wickiHaydenSlides = (data1 == 1);
+    // ignore byte 307 = reserved
   }
 }
 
@@ -5989,10 +6072,10 @@ void microLinnImportSplits(byte data1, byte data2, unsigned short i,  byte prese
   microLinnImportSplit(data1, data2, i, presetNum, side);
 }
 
-void microLinnImportSplit(byte data1, byte data2, unsigned short i,  byte presetNum, byte side) {       // version 72.1 and 72.2 size is 113 bytes per side
+void microLinnImportSplit(byte data1, byte data2, unsigned short i,  byte presetNum, byte side) {       // version 72.1 to 72.3 size is 113 bytes per side
   if (i < 0 || i >= sizeof(SplitSettings)) return;
   SplitSettings *spl = (presetNum == 0 ? &Split[side] : &config.preset[presetNum - 1].split[side]);
-  if (i >= 102 && !microLinnImportXen) return;
+  if (i >= 102 && i < 110 && !microLinnImportXen) return;                   // 111-113 aren't microtonal
   unsigned short number = data1 | (data2 << 8);
 
   if (i == 0) {
@@ -6123,8 +6206,17 @@ void microLinnImportSplit(byte data1, byte data2, unsigned short i,  byte preset
     n = (signed char)data2;
     if (microLinnInRange(n, -1, 127))    spl->microLinn.ccForLowRowY = data2;
   } else if (i == 110) {
-    if (microLinnInRange(data1, 0, 255)) spl->microLinn.flags = data1;
-    // ignore bytes 111-113 = reserved for future use
+    if (microLinnImportXen && microLinnInRange(data1, 0, 255)) spl->microLinn.flags = data1;
+    if (microLinnImportMLversion < 3) {
+      initMicroLinnPressureSplit(spl->microLinn);                            // 72.1 and 72.2 have reserved bytes here
+    } else {
+      spl->microLinn.pressureRelease = data2;                                // 0..255
+    }
+  } else if (i == 112) {
+    if (microLinnImportMLversion >= 3) {
+      if (microLinnInRange(data1, 0, MICROLINN_MAX_LIFT_HOLD)) spl->microLinn.liftHold = data1;
+      spl->microLinn.reattachGlide = data2;                                  // 0..255
+    }
   }
 }
 
