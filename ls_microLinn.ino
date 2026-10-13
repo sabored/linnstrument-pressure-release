@@ -6055,10 +6055,10 @@ void microLinnImportGlobal(byte data1, byte data2, unsigned short i, byte preset
     if (i == 302) microLinnCheckGuitarTuning();
   } else if (i == 304) {
     if (microLinnImportXen && microLinnInRange(data1, 0, 1)) g->microLinn.dotsCarryOver = (data1 == 1);
-    if (microLinnImportMLversion < 3) {
+    if (microLinnImportMLversion >= 3) {
+      if (microLinnInRange(data2, 1, 255)) g->microLinn.pianoFade = data2;
+    } else if (microLinnImportType != 0) {                                   // unless dotsCarryOver cancelled the import
       initMicroLinnPressureGlobal(g->microLinn);                             // 72.1 and 72.2 have reserved bytes here
-    } else if (microLinnInRange(data2, 1, 255)) {
-      g->microLinn.pianoFade = data2;
     }
   } else if (i == 306) {
     if (microLinnImportMLversion >= 3 && microLinnInRange(data1, 0, 1)) g->microLinn.wickiHaydenSlides = (data1 == 1);
@@ -6207,15 +6207,15 @@ void microLinnImportSplit(byte data1, byte data2, unsigned short i,  byte preset
     if (microLinnInRange(n, -1, 127))    spl->microLinn.ccForLowRowY = data2;
   } else if (i == 110) {
     if (microLinnImportXen && microLinnInRange(data1, 0, 255)) spl->microLinn.flags = data1;
-    if (microLinnImportMLversion < 3) {
+    if (microLinnImportMLversion >= 3) {
+      if (microLinnInRange(data2, 0, 255)) spl->microLinn.pressureRelease = data2;
+    } else if (microLinnImportType != 0) {                                   // unless the import was cancelled
       initMicroLinnPressureSplit(spl->microLinn);                            // 72.1 and 72.2 have reserved bytes here
-    } else {
-      spl->microLinn.pressureRelease = data2;                                // 0..255
     }
   } else if (i == 112) {
     if (microLinnImportMLversion >= 3) {
       if (microLinnInRange(data1, 0, MICROLINN_MAX_LIFT_HOLD)) spl->microLinn.liftHold = data1;
-      spl->microLinn.reattachGlide = data2;                                  // 0..255
+      if (microLinnInRange(data2, 0, 255)) spl->microLinn.reattachGlide = data2;     // not if Lift Hold cancelled the import
     }
   }
 }
