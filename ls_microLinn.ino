@@ -1756,6 +1756,17 @@ boolean isMicroLinnColOffsetOn(byte side) {
   return Split[side].microLinn.colOffset != 1;
 }
 
+// Column Slide Divisions, 1..MICROLINN_MAX_COL_OFFSET, stored minus 1 (see MicroLinnGlobal). Only a corrupted or
+// hand-edited settings file can hold more than MICROLINN_MAX_COL_OFFSET - 1, which reads as the largest number,
+// as a step on its menu row would make it, so the number is never 0 or above MICROLINN_MAX_COL_OFFSET
+byte MicroLinnGlobal::columnSlideDivisions() {
+  return min(columnSlideDivisionsMinus1, MICROLINN_MAX_COL_OFFSET - 1) + 1;
+}
+
+void MicroLinnGlobal::setColumnSlideDivisions(byte divisions) {
+  columnSlideDivisionsMinus1 = constrain(divisions, 1, MICROLINN_MAX_COL_OFFSET) - 1;
+}
+
 // a cell's edostep = the distance in edosteps from the anchor cell, plus transposition
 // a cell's virtual edostep = the distance in edosteps from the cell with the lowest pitch, not transposed
 // virtual edostep is always >= 0, virtual edostep = edostep - microLinnLowestEdostep[side]

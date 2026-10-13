@@ -874,9 +874,10 @@ struct MicroLinnGlobal {
   inline void setDotsCarryOver()     {bitWrite(packedByte2, 7, b);}
   ***********************/
   // Column Slide Divisions is stored minus 1, so that 0 is its default, 1, and settings saved when this byte was
-  // an on/off switch (Wicki-Hayden Slides) read OFF as 1 and ON as 2
-  inline byte columnSlideDivisions()          {return columnSlideDivisionsMinus1 + 1;}
-  inline void setColumnSlideDivisions(byte b) {columnSlideDivisionsMinus1 = b - 1;}
+  // an on/off switch (Wicki-Hayden Slides) read OFF as 1 and ON as 2; both are in ls_microLinn.ino, and always
+  // give or keep 1..MICROLINN_MAX_COL_OFFSET
+  byte columnSlideDivisions();
+  void setColumnSlideDivisions(byte divisions);
   byte drumPadMode;                          // creates an array of 2x3 (if 1) or 3x3 (if 2) drum pads, array is 2x7, but only 2x5 if 3x3 on the 128
   byte locatingCC1;                          // CC to send with row/column location for each note-on in cols 1-16 or cols 17-25...
   byte locatingCC2;                          // ...ranges from 0 to 127, 255 = OFF
