@@ -1340,25 +1340,25 @@ void receivedNrpn(int parameter, int value, int channel) {
       break;
     // Global MIDI CC For Foot Left Sustain
     case 259:
-      if (inRange(value, 0, 127)) {
+      if (inRange(value, 0, MICROLINN_MAX_SUSTAIN_CC)) {          // microLinn: and PRES
         Global.ccForSwitchSustain[SWITCH_FOOT_L] = value;
       }
       break;
     // Global MIDI CC For Foot Right Sustain
     case 260:
-      if (inRange(value, 0, 127)) {
+      if (inRange(value, 0, MICROLINN_MAX_SUSTAIN_CC)) {          // microLinn: and PRES
         Global.ccForSwitchSustain[SWITCH_FOOT_R] = value;
       }
       break;
     // Global MIDI CC For Switch 1 Sustain
     case 261:
-      if (inRange(value, 0, 127)) {
+      if (inRange(value, 0, MICROLINN_MAX_SUSTAIN_CC)) {          // microLinn: and PRES
         Global.ccForSwitchSustain[SWITCH_SWITCH_1] = value;
       }
       break;
     // Global MIDI CC For Switch 2 Sustain
     case 262:
-      if (inRange(value, 0, 127)) {
+      if (inRange(value, 0, MICROLINN_MAX_SUSTAIN_CC)) {          // microLinn: and PRES
         Global.ccForSwitchSustain[SWITCH_SWITCH_2] = value;
       }
       break;
@@ -2528,7 +2528,7 @@ void preSendSustain(byte split, byte v) {
 }
 
 void preSendSwitchSustain(byte whichSwitch, byte split, byte v) {
-  preSendControlChange(split, Global.ccForSwitchSustain[whichSwitch], v, true);
+  preSendControlChange(split, getMicroLinnSwitchSustainCC(whichSwitch), v, true);
 }
 
 void preSendSwitchCC65(byte whichSwitch, byte split, byte v) {

@@ -229,7 +229,7 @@ void changeSwitchState(byte whichSwitch, byte assignment, byte split, boolean en
     switchCCEnabled[split][Global.ccForSwitchCC65[whichSwitch]] = enabled;
   }
   else if (assignment == ASSIGNED_SUSTAIN) {
-    switchCCEnabled[split][Global.ccForSwitchSustain[whichSwitch]] = enabled;
+    switchCCEnabled[split][getMicroLinnSwitchSustainCC(whichSwitch)] = enabled;
   }
   else {
     switchTargetEnabled[split][assignment] = enabled;
@@ -604,5 +604,11 @@ inline boolean isSwitchCC65CCEnabled(byte whichSwitch, byte split) {
 }
 
 inline boolean isSwitchSustainCCEnabled(byte whichSwitch, byte split) {
-  return switchCCEnabled[split][Global.ccForSwitchSustain[whichSwitch]];
+  return switchCCEnabled[split][getMicroLinnSwitchSustainCC(whichSwitch)];
+}
+
+// microLinn: the CC a Sustain switch sends, a PRES value (128 and above) acts as ordinary sustain, CC 64
+inline byte getMicroLinnSwitchSustainCC(byte whichSwitch) {
+  unsigned short cc = Global.ccForSwitchSustain[whichSwitch];
+  return cc > 127 ? 64 : cc;
 }

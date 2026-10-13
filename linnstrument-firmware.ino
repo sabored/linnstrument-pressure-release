@@ -213,6 +213,12 @@ byte NUMROWS = 8;                    // number of touch sensor rows
 #define MAX_ASSIGNED                    ASSIGNED_MICROLINN_EDO_DOWN
 #define ASSIGNED_DISABLED               255
 
+// microLinn: a Sustain switch's CC selector goes past the CC numbers to these pressure capture modes
+#define MICROLINN_PRES_FOLLOW           128
+#define MICROLINN_PRES_LATCH            129
+#define MICROLINN_PRES_PIANO            130
+#define MICROLINN_MAX_SUSTAIN_CC        MICROLINN_PRES_PIANO
+
 #define GLOBAL_SETTINGS_ROW  0
 #define SPLIT_ROW            1
 #define SWITCH_2_ROW         2
@@ -912,7 +918,7 @@ struct GlobalSettings {
   byte switchAssignment[5];                  // The element values are ASSIGNED_*.  The index values are SWITCH_*.
   boolean switchBothSplits[5];               // Indicate whether the switches should operate on both splits or only on the focused one
   unsigned short ccForSwitchCC65[5];         // 0-127
-  unsigned short ccForSwitchSustain[5];      // 0-127
+  unsigned short ccForSwitchSustain[5];      // 0-127, plus microLinn's PRES values 128-130 (MICROLINN_PRES_*)
   unsigned short customSwitchAssignment[5];  // ASSIGNED_TAP_TEMPO, ASSIGNED_LEGATO, ASSIGNED_LATCH, ASSIGNED_PRESET_UP, ASSIGNED_PRESET_DOWN, ASSIGNED_REVERSE_PITCH_X, ASSIGNED_SEQUENCER_PLAY, ASSIGNED_SEQUENCER_PREV, ASSIGNED_SEQUENCER_NEXT, ASSIGNED_STANDALONE_MIDI_CLOCK and ASSIGNED_SEQUENCER_MUTE
   byte midiIO;                               // 0 = MIDI jacks, 1 = USB
   ArpeggiatorDirection arpDirection;         // the arpeggiator direction that has to be used for the note sequence

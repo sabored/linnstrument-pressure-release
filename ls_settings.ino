@@ -2218,7 +2218,7 @@ void handleCCForSwitchCC65ConfigRelease() {
 }
 
 void handleCCForSwitchSustainConfigNewTouch() {
-  handleNumericDataNewTouchCol(Global.ccForSwitchSustain[switchSelect], 0, 127, false);
+  handleNumericDataNewTouchCol(Global.ccForSwitchSustain[switchSelect], 0, MICROLINN_MAX_SUSTAIN_CC, false);    // microLinn: and PRES
 }
 
 void handleCCForSwitchSustainConfigRelease() {

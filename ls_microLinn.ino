@@ -5992,7 +5992,7 @@ void microLinnImportGlobal(byte data1, byte data2, unsigned short i, byte preset
   } else if (i <= 138) {
     if (microLinnInRange(number, 0, 127)) g->ccForSwitchCC65[(i-130)/2] = number;
   } else if (i <= 148) {
-    if (microLinnInRange(number, 0, 127)) g->ccForSwitchSustain[(i-140)/2] = number;
+    if (microLinnInRange(number, 0, MICROLINN_MAX_SUSTAIN_CC)) g->ccForSwitchSustain[(i-140)/2] = number;     // and PRES
   } else if (i <= 158) {
     if (microLinnInRange(number, ASSIGNED_TAP_TEMPO, MAX_ASSIGNED)) g->customSwitchAssignment[(i-150)/2] = microLinnImportedSwitch(number);
   } else if (i == 160) {

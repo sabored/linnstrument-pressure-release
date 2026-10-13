@@ -2715,6 +2715,10 @@ void restoreNonMicroLinnGlobal(void* target) {                          // V16 h
       if (i == SWITCH_FOOT_B) g->switchAssignment[i] = ASSIGNED_DISABLED;             // disable virtual 3rd footswitch
       else g->switchAssignment[i] = g->customSwitchAssignment[i];                     // keep the custom option selected
     }
+    // V16 has no PRES values for the Sustain switches, so make them the sustain they fall back to
+    if (g->ccForSwitchSustain[i] > 127) {
+      g->ccForSwitchSustain[i] = 64;
+    }
   }
 }
 
